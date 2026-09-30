@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>VOX London Hub</title>
+<meta name="description" content="The working hub for the VOX London founding group.">
+<meta name="theme-color" content="#3c3c3c">
+<meta name="color-scheme" content="light">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/icon-192.png">
+<link rel="apple-touch-icon" href="/assets/icon-192.png">
+<!-- Modern browsers read the manifest; iOS before 17.4 only reads these. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VOX Hub">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+
+<div id="boot" class="gate">
+  <div class="gate-card" style="text-align:center">
+    <img class="gate-logo" src="/assets/logo.png" alt="VOX" style="margin:0 auto 24px">
+    <div class="skel" style="width:70%;margin:0 auto 10px"></div>
+    <div class="skel" style="width:45%;margin:0 auto"></div>
+  </div>
+</div>
+
+<!-- Sign in ---------------------------------------------------------------->
+<div id="gate" class="gate" hidden>
+  <div class="gate-card">
+    <img class="gate-logo" src="/assets/logo.png" alt="VOX">
+
+    <div id="step-email">
+      <h1>VOX London Hub</h1>
+      <p>Sign in with the email address your organisation was invited on. We will send you a six-digit code.</p>
+      <form id="form-email" novalidate>
+        <label class="field"><span>Email address</span>
+          <input type="email" id="email" autocomplete="email" inputmode="email" required
+                 placeholder="you@yourcharity.org"></label>
+        <button class="btn btn-wide" id="btn-email" type="submit">Send me a code</button>
+      </form>
+    </div>
+
+    <div id="step-code" hidden>
+      <h1>Check your email</h1>
+      <p>We have sent a six-digit code to <b id="sent-to"></b>. It is good for ten minutes.</p>
+      <form id="form-code" novalidate>
+        <label class="field"><span>Your code</span>
+          <input type="text" id="code" class="code" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" pattern="[0-9]{6}" required placeholder="000000"></label>
+        <button class="btn btn-wide" id="btn-code" type="submit">Sign in</button>
+      </form>
+      <p style="margin-top:16px;margin-bottom:0;display:flex;gap:18px;flex-wrap:wrap">
+        <button class="linkish" id="resend-code">Send me a new code</button>
+        <button class="linkish" id="back-to-email">Use a different address</button>
+      </p>
+    </div>
+
+    <div id="gate-msg" hidden></div>
+
+    <p class="small muted" style="margin-top:22px;margin-bottom:0">
+      Not been invited yet? Email <a href="mailto:martin@voxhouses.global">martin@voxhouses.global</a>.
+    </p>
+  </div>
+</div>
+
+<!-- Signed in, no tier ----------------------------------------------------->
+<div id="nogo" class="gate" hidden>
+  <div class="gate-card">
+    <img class="gate-logo" src="/assets/logo.png" alt="VOX">
+    <h1>Almost there</h1>
+    <p>You are signed in as <b id="nogo-email"></b>, but this address has not been given access yet.</p>
+    <p class="small muted">If you were expecting access, email
+      <a href="mailto:martin@voxhouses.global">martin@voxhouses.global</a>.</p>
+    <button class="btn btn-ghost btn-wide" id="nogo-out" style="margin-top:8px">Sign out</button>
+  </div>
+</div>
+
+<!-- The hub ---------------------------------------------------------------->
+<div id="app" class="app" hidden>
+  <aside class="side" id="side">
+    <div class="side-top">
+      <img src="/assets/logo.png" alt="VOX">
+      <div class="sub">London Hub</div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Sections"></nav>
+    <div class="side-foot">
+      <div class="who" id="me-name">&mdash;</div>
+      <div class="org" id="me-org"></div>
+      <button id="signout">Sign out</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="burger" id="burger" aria-label="Menu">&#9776;</button>
+      <h1 id="page-title">&nbsp;</h1>
+      <span class="tierbadge" id="tier-badge"></span>
+    </header>
+    <main class="content" id="view" tabindex="-1"></main>
+  </div>
+</div>
+
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

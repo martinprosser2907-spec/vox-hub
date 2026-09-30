@@ -1,0 +1,93 @@
+# ---------------------------------------------------------------------------
+# Publishes the VOX London Hub to voxlondon.uk on every push to main.
+#
+# WHY A WORKFLOW RATHER THAN "DEPLOY FROM BRANCH"
+#
+# Deploying from the branch serves the repository as it stands, which would put
+# seed-members.js, firestore.rules, the Cloud Functions source, the tests and
+# VOX-SYSTEM.md on the public web at voxlondon.uk. The repository is public, so
+# none of that is a leak — but there is no reason to serve it from the hub's own
+# address, and VOX-SYSTEM.md in particular is an internal note.
+#
+# It also makes version.json work. js/app.js fetches /version.json on load and
+# reloads the page once if the stamp has changed since the tab last looked. The
+# file in the repository says "REPLACED_AT_DEPLOY" and nothing has ever replaced
+# it, so that check has never once fired. This workflow stamps it with the
+# commit, which is what the design assumed all along.
+#
+# GitHub's soft limit of 10 Pages builds an hour does not apply to a custom
+# workflow like this one, which is a third reason.
+# ---------------------------------------------------------------------------
+name: Publish the hub
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # a "Run workflow" button, for republishing by hand
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One publish at a time. Two pushes close together should not race each other
+# onto the live site in the wrong order.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gather the files a browser actually needs
+        run: |
+          mkdir -p site
+          cp -r index.html 404.html manifest.webmanifest sw.js assets js site/
+          cp CNAME site/
+
+      - name: Stamp this build
+        run: |
+          printf '{ "stamp": "%s %s" }\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${GITHUB_SHA:0:7}" > site/version.json
+          cat site/version.json
+
+      - name: Keep the hub out of search results
+        # It is a members' intranet on a public address. The shell is public —
+        # there is no data in it without a signed-in token — but there is no
+        # good reason for voxlondon.uk to turn up in a search for VOX London.
+        run: |
+          printf 'User-agent: *\nDisallow: /\n' > site/robots.txt
+
+      - name: Refuse to publish if anything private got in
+        # The real guard is .gitignore, which stops a key being committed at
+        # all. This is the second one, because the cost of being wrong here is
+        # a service account key — full admin on the Firebase project, every
+        # charity's details, the CRM, the lot — on a public web address.
+        run: |
+          found=$(find site \( -iname '*serviceaccount*' -o -iname '.env*' \
+                    -o -iname '*.pem' -o -iname '*.key' \) -print)
+          if [ -n "$found" ]; then
+            echo "::error::These reached the publish folder and must not go out:"
+            echo "$found"
+            exit 1
+          fi
+          test -f site/CNAME || { echo "::error::CNAME is missing — voxlondon.uk would stop working."; exit 1; }
+          test -f site/index.html || { echo "::error::index.html is missing."; exit 1; }
+          echo "Publishing $(find site -type f | wc -l) files."
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

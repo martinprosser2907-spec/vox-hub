@@ -1,0 +1,59 @@
+rules_version = '2';
+
+// ===========================================================================
+// VOX London Hub — file storage rules
+//
+// Storage rules CANNOT read Firestore. Calla verified this against a live
+// project: firestore.get() from inside a storage rule is refused even for a
+// trivially true check. So the tier must come from the sign-in token, which
+// is exactly why verifyLoginCode stamps it as a custom claim.
+//
+// Same three tiers, same ladder, same .get(key, default) discipline.
+// ===========================================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function tierName() {
+      return request.auth == null ? 'none' : request.auth.token.get('tier', 'none');
+    }
+    function tier() {
+      return tierName() == 'admin'    ? 3
+           : tierName() == 'steering' ? 2
+           : tierName() == 'general'  ? 1
+           : 0;
+    }
+    function atLeast(n)  { return tier() >= n; }
+    function under(mb)   { return request.resource.size < mb * 1024 * 1024; }
+    function isImage()   { return request.resource.contentType.matches('image/.*'); }
+
+    // Photographs — everyone in may look, only VOX uploads.
+    match /gallery/{file} {
+      allow read:   if atLeast(1);
+      allow write:  if atLeast(3) && under(8) && isImage();
+      allow delete: if atLeast(3);
+    }
+
+    // Steering Group papers, filed under the uid of whoever added them:
+    // documents/<uid>/<timestamp>-<name>.
+    //
+    // The uid is in the path because these rules cannot read Firestore, and
+    // firestore.rules lets a person delete a document they added themselves.
+    // Without the uid here, only VOX could remove the FILE while anyone could
+    // remove the RECORD — so a Steering member tidying up their own draft left
+    // the bytes behind with nothing pointing at them. The two rule sets have to
+    // agree, and the path is the only thing this one gets to see.
+    match /documents/{owner}/{allPaths=**} {
+      allow read:   if atLeast(2);
+      allow write:  if atLeast(2) && under(25);
+      allow delete: if atLeast(3) || (atLeast(2) && owner == request.auth.uid);
+    }
+
+    // VOX's own working files.
+    match /admin/{allPaths=**} {
+      allow read, write, delete: if atLeast(3) && under(50);
+    }
+
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

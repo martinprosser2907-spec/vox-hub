@@ -1,0 +1,24 @@
+{
+  "name": "vox-hub-core",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "VOX London Hub \u2014 security rules, sign-in functions and design tokens",
+  "scripts": {
+    "test:rules": "firebase emulators:exec --only firestore,storage --project vox-hub-test \"vitest run\"",
+    "test:views": "vitest run tests/concept-view.test.mjs",
+    "deploy:rules": "firebase deploy --only firestore:rules,storage",
+    "deploy:functions": "firebase deploy --only functions",
+    "seed": "node seed-members.js",
+    "fix:pages": "node fix-pages.js"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.0.0",
+    "vitest": "^2.1.8",
+    "firebase-admin": "^13.0.0"
+  },
+  "dependencies": {
+    "firebase-tools": "^15.30.1"
+  }
+}

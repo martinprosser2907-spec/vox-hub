@@ -1,0 +1,27 @@
+# Credentials — NEVER commit these.
+# A service account key in a public repo is full admin access to the whole
+# Firebase project: every charity's details, the CRM, the lot.
+#
+# The repository is public, so this file is the thing standing between that key
+# and the open internet. Two patterns, not one, because serviceAccount.json.json
+# exists in this folder and a single leading-anchored pattern would miss a copy
+# saved under another name.
+serviceAccount*.json
+*serviceAccount*.json
+.env
+.env.*
+*.pem
+*.key
+
+# Local noise
+node_modules/
+.firebase/
+*-debug.log
+firebase-debug.*.log
+test-results/
+.vercel/
+.DS_Store
+Thumbs.db
+
+# Built by the publish workflow, never committed.
+site/

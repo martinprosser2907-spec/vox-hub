@@ -1,0 +1,94 @@
+/* ===========================================================================
+   VOX London Hub — design tokens
+   ---------------------------------------------------------------------------
+   Every colour, radius and type size in the hub comes from here. Components
+   reference the variables; nothing else hard-codes a hex value. Change a token
+   and it changes everywhere, which is the entire point.
+
+   VOX is always in capitals. Barlow is the typeface.
+   =========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* -- Ground ------------------------------------------------------------ */
+  --vox-paper:      #ffffff;   /* cards, panels, the sheet you read on      */
+  --vox-wash:       #f6f6f6;   /* the page behind the cards                 */
+  --vox-black:      #0d0d0d;   /* the masthead band                         */
+
+  /* -- VOX Grey ---------------------------------------------------------- */
+  --vox-grey:       #3c3c3c;   /* the brand grey. Sidebar, headers, ink     */
+  --vox-grey-75:    #646464;   /* secondary text                            */
+  --vox-grey-50:    #9d9d9d;   /* labels, timestamps, disabled              */
+  --vox-grey-25:    #d2d2d2;   /* borders                                   */
+  --vox-grey-10:    #ededed;   /* hairlines, table rules                    */
+
+  /* -- Brick ------------------------------------------------------------- */
+  --vox-brick:      #f28d65;   /* the accent. Buttons, active state, rules  */
+  --vox-brick-75:   #f5a98c;
+  --vox-brick-50:   #f8c6b2;
+  --vox-brick-25:   #fce2d9;   /* tinted panels and stat tiles              */
+  --vox-brick-ink:  #8a4526;   /* text ON a brick-25 panel. 7.2:1 on it     */
+  --vox-brick-dark: #e87849;   /* hover                                     */
+
+  /* -- Text -------------------------------------------------------------- */
+  --vox-ink:        #1c1c1c;   /* body text. 15.8:1 on paper                */
+  --vox-on-dark:    #ffffff;
+  --vox-on-dark-75: rgba(255,255,255,0.82);
+
+  /* One muted grey, not two.
+     Two greys that both have to clear 7:1 end up too close together to read
+     as a real distinction. Hierarchy comes from size and weight instead. */
+  --vox-muted:      var(--vox-grey-75);   /* 6.1:1 on paper                 */
+
+  /* -- Meaning ----------------------------------------------------------- */
+  --vox-ok:         #2e7d4f;  --vox-ok-bg:   #e8f3ec;
+  --vox-warn:       #c8791f;  --vox-warn-bg: #fdf3e4;
+  --vox-bad:        #b3323c;  --vox-bad-bg:  #fdecee;
+
+  /* -- Shape ------------------------------------------------------------- */
+  --vox-radius-card:    4px;
+  --vox-radius-control: 4px;
+  --vox-radius-pill:    999px;
+  --vox-border:         1px solid var(--vox-grey-25);
+  --vox-shadow:         0 1px 3px rgba(0,0,0,.08), 0 6px 20px rgba(0,0,0,.05);
+
+  /* -- Type -------------------------------------------------------------- */
+  --vox-font: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --vox-mono: 'JetBrains Mono', ui-monospace, Menlo, Consolas, monospace;
+
+  --vox-size-hero:   40px;
+  --vox-size-title:  25px;
+  --vox-size-head:   19px;
+  --vox-size-body:   15px;
+  --vox-size-small:  13.5px;
+  --vox-size-label:  11px;   /* uppercase, letter-spaced, 600 weight        */
+
+  --vox-track-label: 2.2px;  /* letter-spacing for those small caps labels  */
+
+  /* -- Space ------------------------------------------------------------- */
+  --vox-gap-xs: 6px;  --vox-gap-sm: 12px;  --vox-gap:    20px;
+  --vox-gap-lg: 32px; --vox-gap-xl: 48px;
+
+  --vox-sidebar: 248px;
+}
+
+/* ---------------------------------------------------------------------------
+   Three rules that keep it consistent:
+
+   1. A small-caps label is always  font-size: var(--vox-size-label);
+      letter-spacing: var(--vox-track-label); text-transform: uppercase;
+      font-weight: 600 — and coloured --vox-brick on paper, or
+      --vox-brick-75 on --vox-grey.
+
+   2. Anything interactive gets a visible focus ring. No exceptions:
+        :focus-visible { outline: 2px solid var(--vox-brick); outline-offset: 2px; }
+
+   3. Text on a brick-25 panel uses --vox-brick-ink, never --vox-brick.
+      Brick on brick-25 is 1.9:1 and unreadable.
+   --------------------------------------------------------------------------- */
+
+*:focus-visible {
+  outline: 2px solid var(--vox-brick);
+  outline-offset: 2px;
+}

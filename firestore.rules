@@ -1,0 +1,319 @@
+rules_version = '2';
+
+// ===========================================================================
+// vox-project-management-dbase — ONE ruleset for THREE apps
+//
+//   1. The VOX planner        (vox_projects, crm_*, boards, surveys, ...)
+//   2. Calla Business Planner (businesses/...)
+//   3. The VOX London Hub     (members, pages, content, suggestions, ...)
+//
+// WHY THIS FILE EXISTS
+// The previous ruleset ended with:
+//     match /{document=**} { allow read, write: if request.auth != null; }
+// which is fine while everyone signed in is you, Frederik and Louise. It stops
+// being fine the moment a charity signs in to the hub, because that one line
+// hands them the entire CRM — site addresses, landlord names, rent figures,
+// every contact and deal. Exactly what Louise said must stay with the
+// Steering Group.
+//
+// THE TWO KINDS OF ACCOUNT
+//   Legacy — signs in to the planner with email and password. No tier claim.
+//   Hub    — signs in with an emailed code. Carries tier: general|steering|admin.
+//
+// Legacy accounts keep working untouched. Hub accounts get only what their
+// tier allows, and the catch-all no longer gives them the run of the place.
+//
+// BEFORE DEPLOYING: turn off self sign-up.
+//   Console > Authentication > Settings > User actions > untick
+//   "Enable create (sign-up)". Otherwise anyone can register an email/password
+//   account, arrive with no tier claim, and be treated as a legacy user.
+// ===========================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -- Reading the tier ---------------------------------------------------
+    //
+    // ALWAYS .get('key', default). A dotted reference to an absent claim
+    // THROWS, and a thrown rule denies everything — so the day a claim is
+    // added, every older token is locked out with no error anywhere.
+
+    function signedIn() { return request.auth != null; }
+
+    function tierName() {
+      return signedIn() ? request.auth.token.get('tier', 'none') : 'none';
+    }
+
+    // Explicit == against each known value, never != 'general'. An unexpected
+    // value must read as NO access, not as the highest one.
+    function tier() {
+      return tierName() == 'admin'    ? 3
+           : tierName() == 'steering' ? 2
+           : tierName() == 'general'  ? 1
+           : 0;
+    }
+
+    function atLeast(n) { return tier() >= n; }
+    function isAdmin()  { return tier() == 3; }
+    function uid()      { return request.auth.uid; }
+    function myEmail()  { return signedIn() ? request.auth.token.get('email', '') : ''; }
+
+    // An account that predates the hub: signed in, but carrying no tier.
+    // This is what keeps the planner working for you, Frederik and Louise
+    // without anyone having to migrate on the day the hub goes live.
+    function legacyUser() { return signedIn() && tierName() == 'none'; }
+
+    // Who may touch planner and business-planner data.
+    function plannerAccess() { return isAdmin() || legacyUser(); }
+
+    // The "you may react but not rewrite" clause.
+    function onlyChanges(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // A vote list may only ever gain or lose YOU.
+    function onlyTogglesMe(field) {
+      let before = resource.data.get(field, []).toSet();
+      let after  = request.resource.data[field].toSet();
+      return before.difference(after).hasOnly([uid()])
+          && after.difference(before).hasOnly([uid()]);
+    }
+
+    function nonEmpty(field, maxLen) {
+      return request.resource.data[field] is string
+          && request.resource.data[field].size() > 0
+          && request.resource.data[field].size() <= maxLen;
+    }
+
+    // =======================================================================
+    // THE VOX PLANNER — unchanged behaviour for legacy accounts, closed to
+    // general and steering hub members.
+    // =======================================================================
+
+    match /vox_projects/{id}     { allow read, write: if plannerAccess(); }
+    match /crm_contacts/{id}     { allow read, write: if plannerAccess(); }
+    match /crm_deals/{id}        { allow read, write: if plannerAccess(); }
+    match /incoming_emails/{id}  { allow read, write: if plannerAccess(); }
+    match /boards/{id}           { allow read, write: if plannerAccess(); }
+    match /surveys/{id}          { allow read, write: if plannerAccess(); }
+    match /steering_actions/{id} { allow read, write: if plannerAccess(); }
+    match /survey_responses/{id} { allow read, write: if plannerAccess(); }
+
+    // -- The two deliberate public carve-outs, carried over untouched -------
+    // A survey respondent has no account, so they can post a response but
+    // never read one back.
+    match /requirement_responses/{doc} {
+      allow create: if true;
+      allow read, update, delete: if plannerAccess();
+    }
+
+    match /config/{doc} {
+      // The survey form definition has to be readable before sign-in.
+      allow read:  if doc == 'survey_fields' || plannerAccess();
+      allow write: if plannerAccess();
+    }
+
+    // =======================================================================
+    // CALLA BUSINESS PLANNER — carried over as written.
+    // =======================================================================
+    match /businesses/{planId} {
+      allow read, write: if plannerAccess();
+
+      match /data/{section} {
+        allow read, write: if plannerAccess();
+      }
+
+      // An issued version is what a bank was actually shown. It can be
+      // created and read, never edited or deleted — a snapshot that can be
+      // changed afterwards is not evidence of anything.
+      match /versions/{versionId} {
+        allow read, create: if plannerAccess();
+        allow update, delete: if false;
+      }
+    }
+
+    // =======================================================================
+    // THE VOX LONDON HUB
+    // -----------------------------------------------------------------------
+    // People and access
+    // =======================================================================
+
+    // Each person's own record. The tier here is a MIRROR for the admin
+    // screen to display and edit; the claim on the token is what actually
+    // grants access, and only a function can set that.
+    match /members/{memberId} {
+      allow read:   if isAdmin() || (signedIn() && resource.data.get('email', '') == myEmail());
+      allow create, delete: if isAdmin();
+
+      // An admin may change anything. A person may correct their own name and
+      // organisation — and nothing else, least of all their tier.
+      allow update: if isAdmin()
+        || (signedIn()
+            && resource.data.get('email', '') == myEmail()
+            && onlyChanges(['name', 'org', 'lastSeen']));
+
+      // claimsUpdatedAt is written by onMemberTierChanged through the Admin
+      // SDK, which ignores these rules. It is listed here only so the field
+      // is documented where the rest of the record is.
+    }
+
+    // Written by the sign-in function through the Admin SDK, which ignores
+    // these rules. Nothing in a browser has any business here at all.
+    match /loginCodes/{email} { allow read, write: if false; }
+
+    // =======================================================================
+    // The menu. Pages live in the database, so a new page needs no deploy.
+    // =======================================================================
+    match /pages/{pageId} {
+      allow read:  if signedIn() && atLeast(resource.data.get('minTier', 3));
+      allow write: if isAdmin();
+    }
+
+    // =======================================================================
+    // Tier 1 — everyone in the founding group
+    // =======================================================================
+
+    match /content/{page}     { allow read: if atLeast(1); allow write: if isAdmin(); }
+
+    // The concept page's sections. Listed here because the catch-all at the
+    // bottom denies anything that is not — and the failure is silent: the page
+    // renders its introduction and simply shows no sections, with nothing
+    // anywhere to say why. Same shape as content/: everyone in reads it, only
+    // VOX writes it.
+    match /conceptBlocks/{id} { allow read: if atLeast(1); allow write: if isAdmin(); }
+    match /milestones/{id}    { allow read: if atLeast(1); allow write: if isAdmin(); }
+    match /gallery/{id}       { allow read: if atLeast(1); allow write: if isAdmin(); }
+
+    match /updates/{id} {
+      allow read:   if atLeast(1);
+      allow create, delete: if isAdmin();
+      // Anyone may mark an update as read, and change nothing else.
+      allow update: if isAdmin()
+        || (atLeast(1) && onlyChanges(['readBy']) && onlyTogglesMe('readBy'));
+    }
+
+    match /suggestions/{id} {
+      allow read: if atLeast(1);
+      allow create: if atLeast(1)
+        && request.resource.data.authorId == uid()
+        && nonEmpty('text', 900)
+        && request.resource.data.get('backers', []) == [];
+      // Author edits their own; everyone else may only back or unback it, or
+      // move the note.
+      //
+      // Moving is deliberately open to any member. It is a pin board: walk up
+      // to it, move a note, and it has moved for everyone. Restricting that to
+      // the author would make the board an arrangement nobody can tidy.
+      // The words stay the author's — a mover may change x, y and z and
+      // nothing else, and all three must be numbers, because a string here
+      // reaches the browser as a broken layout rather than an error.
+      allow update: if isAdmin()
+        || (atLeast(1) && resource.data.authorId == uid())
+        || (atLeast(1) && onlyChanges(['backers']) && onlyTogglesMe('backers'))
+        || (atLeast(1) && onlyChanges(['x', 'y', 'z'])
+            && request.resource.data.x is number
+            && request.resource.data.y is number
+            && request.resource.data.z is number);
+      allow delete: if isAdmin() || resource.data.authorId == uid();
+    }
+
+    match /questions/{id} {
+      allow read: if atLeast(1);
+      allow create: if atLeast(1)
+        && request.resource.data.askedId == uid()
+        && nonEmpty('text', 700)
+        && request.resource.data.get('answer', '') == '';
+      // Only VOX answers. Members may upvote, nothing more.
+      allow update: if isAdmin()
+        || (atLeast(1) && onlyChanges(['upvotes']) && onlyTogglesMe('upvotes'));
+      allow delete: if isAdmin();
+    }
+
+    // =======================================================================
+    // Tier 2 — the Steering Group
+    // =======================================================================
+
+    match /documents/{id} {
+      allow read:   if atLeast(2);
+      allow create: if atLeast(2) && request.resource.data.uploadedBy == uid();
+      allow update: if atLeast(2);
+      allow delete: if isAdmin() || resource.data.get('uploadedBy', '') == uid();
+    }
+
+    match /planning/{id} { allow read: if atLeast(2); allow write: if atLeast(2); }
+    match /risks/{id}    { allow read: if atLeast(2); allow write: if atLeast(2); }
+
+    // A read-only summary of the VOX planner, written by a sync job through
+    // the Admin SDK. The hub never writes back to it.
+    match /tracker/{id}  { allow read: if atLeast(2); allow write: if false; }
+
+    // =======================================================================
+    // VOX ESIGN — the standalone signing product, in this same project.
+    //
+    // This was MISSING, and the catch-all at the bottom therefore denied it.
+    // VOX eSign's dashboard reads these two collections straight from the
+    // browser, so from the moment these merged rules were deployed on
+    // 17 September its dashboard showed nothing and reminders could not be
+    // sent. Signing links kept working, because the public /sign/<token>
+    // flow goes through eSign's own API on the Admin SDK and never consults
+    // these rules at all — which is exactly why the breakage was quiet.
+    //
+    // Who gets in: VOX only. plannerAccess() is the same test the planner
+    // uses — a hub admin, or a legacy email-and-password account, which is
+    // what Martin, Frederik and Louise sign in to eSign with. A charity at
+    // general or steering tier must never read this collection: it would
+    // show them which other organisations have been sent what, and when.
+    // Charities see their own Pledge through the pledgeStatus function,
+    // which reads on the server and hands back only their own line.
+    // =======================================================================
+
+    // Templates: a document with its signature boxes already placed, kept so
+    // it can be sent again. Read by the hub's Signing page through a function,
+    // never from a browser — so like the requests, VOX only.
+    match /esign_templates/{id} { allow read, write: if plannerAccess(); }
+
+    match /esign_signature_requests/{id} {
+      allow read, write: if plannerAccess();
+
+      // Each signer on a document. Holds their token, so this is the one
+      // place a leak would let somebody sign as someone else.
+      match /parties/{partyId} { allow read, write: if plannerAccess(); }
+
+      // The evidence trail. Written only by eSign's server through the
+      // Admin SDK, which ignores these rules — readable here so it can be
+      // shown, and writable by nobody, like the hub's own audit trail.
+      match /audit_log/{entryId} {
+        allow read:  if plannerAccess();
+        allow write: if false;
+      }
+    }
+
+    // =======================================================================
+    // Tier 3 — VOX London
+    // =======================================================================
+
+    match /audit/{id} {
+      allow read:   if isAdmin();
+      allow create: if signedIn();      // anyone may leave a trace
+      allow update, delete: if false;   // nobody may rewrite history
+    }
+
+    match /settings/{id} { allow read: if atLeast(1); allow write: if isAdmin(); }
+
+    // =======================================================================
+    // Closed by default. Every collection the three apps use is named above.
+    //
+    // This was briefly "if plannerAccess()" so that anything missed kept
+    // working. The tests showed what that really costs: a legacy account
+    // could then read loginCodes, rewrite the audit trail and edit an issued
+    // Business Planner version, because rules are OR-ed and a broad grant
+    // here cannot be narrowed by a specific rule above.
+    //
+    // A missed collection is one deploy to fix and announces itself loudly.
+    // A silent grant does not. Closed wins.
+    // =======================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
