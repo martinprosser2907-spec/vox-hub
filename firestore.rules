@@ -240,7 +240,19 @@ service cloud.firestore {
       allow delete: if isAdmin() || resource.data.get('uploadedBy', '') == uid();
     }
 
-    match /planning/{id} { allow read: if atLeast(2); allow write: if atLeast(2); }
+    // The moving pack. CLOSED TO THE BROWSER, deliberately.
+    //
+    // This was `allow read, write: if atLeast(2)`, which is not scoped to the
+    // owner — any Steering Group member could read any other charity's staff
+    // numbers, lease end date and dilapidations position. The tier claim
+    // carries { tier, memberId } and no organisation, so there is nothing here
+    // to match a pack against its owner.
+    //
+    // So it goes the way pledgeStatus already goes: planningPack and
+    // savePlanningSection read and write with the Admin SDK, which ignores
+    // these rules, and hand back only the caller's own pack. Admin keeps a
+    // direct read for console work.
+    match /planning/{id} { allow read, write: if isAdmin(); }
     match /risks/{id}    { allow read: if atLeast(2); allow write: if atLeast(2); }
 
     // A read-only summary of the VOX planner, written by a sync job through

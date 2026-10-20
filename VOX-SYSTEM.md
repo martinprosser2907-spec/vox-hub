@@ -14,7 +14,7 @@ Written 29 September 2026.
 | App | What it is | Lives at | Deployed to |
 |---|---|---|---|
 | **VOX planner** | CRM and pipeline. Predates the rest. Email/password accounts. | `C:\Users\Martin Work\vox-pm-app` | `vox-project-management-dbase.web.app` |
-| **VOX London Hub** | Intranet for the founding charities. Three tiers. Vanilla ES modules, no build step. | `C:\Users\Martin Work\vox-hub` | Nothing yet — see *Not done* |
+| **VOX London Hub** | Intranet for the founding charities. Three tiers. Vanilla ES modules, no build step. | `C:\Users\Martin Work\vox-hub` | `voxlondon.uk` |
 | **VOX eSign** | Electronic signatures. Next.js 15 / React 19 / Tailwind. | `C:\Users\Martin Work\vox-esign` | `vox-esign.vercel.app` |
 
 **All three use the same Firebase project: `vox-project-management-dbase`.**
@@ -189,6 +189,40 @@ should stay.
 
 ---
 
+## How the hub is published
+
+`git push` to `main` → the `Publish the hub` workflow in `.github/workflows/deploy.yml`
+→ GitHub Pages → `https://voxlondon.uk`. There is no other deploy step for the
+web files; `firebase deploy` only ever touches rules and functions.
+
+- Repo: `github.com/martinprosser2907-spec/vox-hub`, **public**. In Martin's
+  personal account alongside Calla's repos, not a VOX organisation — that was
+  the quick way in on the day, and moving it later is GitHub's Transfer button.
+- The workflow publishes **only** the browser files: `index.html`, `404.html`,
+  `manifest.webmanifest`, `sw.js`, `assets/`, `js/`, `CNAME`, plus a generated
+  `version.json` and `robots.txt`. The seeds, rules, functions, tests and this
+  file stay in the repo and are not served from `voxlondon.uk`.
+- It refuses to publish if a `serviceAccount*`, `.env*`, `.pem` or `.key` file
+  reaches the publish folder, or if `CNAME` or `index.html` is missing. All four
+  guards were proved by breaking them on purpose.
+- `version.json` is stamped with the commit. `js/app.js` compares it against
+  `sessionStorage` and reloads once when it changes — before this workflow the
+  file said `REPLACED_AT_DEPLOY` forever, so that check had never fired.
+- **Every path in the app is root-absolute** (`/assets/...`, `/js/app.js`,
+  `/sw.js`, `/version.json`, and `start_url: /` in the manifest). That is why
+  the custom domain is not cosmetic: on `martinprosser2907-spec.github.io/vox-hub/`
+  the site renders as a blank page with a broken logo, because the root is the
+  github.io domain and not the project folder.
+- DNS is at **Cloudflare**: four A records on the apex to GitHub's
+  185.199.108–111.153, and `www` CNAME to `martinprosser2907-spec.github.io`.
+  All **DNS only, grey cloud, not proxied** — Cloudflare's proxy in front of
+  GitHub Pages breaks the certificate. Cloudflare also holds this domain's
+  Resend records; leave those alone.
+- `voxlondon.uk` is in Firebase > Authentication > Settings > Authorised
+  domains. Self sign-up is off, which matters now the repo is public.
+
+---
+
 ## Rules for working on this
 
 - **Never commit `serviceAccount.json`.** `.gitignore` uses `serviceAccount*.json`
@@ -229,8 +263,8 @@ original PDF to show a template survives it, but that harness was not kept.
 
 ## Not done
 
-- **The hub is not deployed anywhere.** No git repository in `vox-hub`, no
-  hosting, and `voxlondon.uk` does not resolve. It runs on a local server only.
+- ~~The hub is not deployed anywhere.~~ **Done, 1 October 2026.** It is live at
+  `https://voxlondon.uk`. See *How the hub is published* below.
 - `sign.voxhouses.global` has no DNS record; eSign is reached at its Vercel URL.
 - Progress tracker and Planning tools are placeholders (`view: "soon"` in `seed-members.js`).
 - Content: gallery photos and the Q&A from the 15 September meeting. The concept

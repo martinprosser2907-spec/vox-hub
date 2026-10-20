@@ -54,6 +54,23 @@ service firebase.storage {
       allow read, write, delete: if atLeast(3) && under(50);
     }
 
+    // VOX Project Management (CRM) attachments: project files (main/) and
+    // sub-project files (subs/). VOX admins only. The size check applies to
+    // uploads only; reads and deletes have no incoming file to measure, so
+    // putting under() on them makes them fail.
+    match /main/{allPaths=**} {
+      allow read, delete: if atLeast(3);
+      allow write:        if atLeast(3) && under(50);
+    }
+    match /subs/{allPaths=**} {
+      allow read, delete: if atLeast(3);
+      allow write:        if atLeast(3) && under(50);
+    }
+    // Older CRM uploads live here; keep them readable/removable by VOX.
+    match /vox_files/{allPaths=**} {
+      allow read, delete: if atLeast(3);
+    }
+
     match /{allPaths=**} { allow read, write: if false; }
   }
 }

@@ -591,3 +591,14 @@ export const remindSigner = onCall({ secrets: ["VOX_SERVICE_KEY"] }, async (req)
   });
   return { ok: true };
 });
+
+/* =========================================================================
+   9. Progress tracker and the moving pack
+   -------------------------------------------------------------------------
+   Both live in their own files because both are about one thing each, and
+   both are long enough that burying them here would hide them. Firebase only
+   deploys what index.js exports, so they are re-exported rather than merely
+   imported — an import alone would load the file and deploy nothing.
+   ========================================================================= */
+export { syncTracker, refreshTracker } from "./tracker.js";
+export { planningPack, savePlanningSection } from "./planning.js";

@@ -30,10 +30,10 @@ const PAGES = [
   { id: "suggestions", title: "Suggestions board", icon: "◎", order: 50, minTier: 1, enabled: true },
   { id: "questions",   title: "Questions",         icon: "?",      order: 60, minTier: 1, enabled: true },
   { id: "pledge",      title: "Sign the Pledge",   icon: "✎", order: 70, minTier: 1, enabled: true },
-  { id: "tracker",     title: "Progress tracker",  icon: "▦", order: 80, minTier: 2, enabled: true, view: "soon" },
+  { id: "tracker",     title: "Progress tracker",  icon: "▦", order: 80, minTier: 2, enabled: true },
   { id: "documents",   title: "Document store",    icon: "▥", order: 90, minTier: 2, enabled: true },
   { id: "signing",     title: "Signing",          icon: "✎", order: 95, minTier: 2, enabled: true },
-  { id: "planning",    title: "Planning tools",    icon: "△", order: 100, minTier: 2, enabled: true, view: "soon" },
+  { id: "planning",    title: "Planning tools",    icon: "△", order: 100, minTier: 2, enabled: true },
   { id: "planner",     title: "VOX planner",       icon: "■", order: 110, minTier: 3, enabled: true,
     url: "https://vox-project-management-dbase.web.app/", external: true },
   // VOX eSign's own dashboard — where a document gets its signature boxes
@@ -53,7 +53,7 @@ const PAGES = [
 // here rather than discovering it by clicking a menu item that does nothing.
 {
   const placeholders = PAGES.filter(p => p.view === "soon").map(p => p.id).sort();
-  const expected = ["planning", "tracker"];
+  const expected = [];   // both built, 20 Oct 2026 — nothing is a placeholder now
   if (String(placeholders) !== String(expected)) {
     throw new Error(
       `PAGES placeholders are [${placeholders}] but should be [${expected}].\n` +
