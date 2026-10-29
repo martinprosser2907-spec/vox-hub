@@ -12,7 +12,8 @@ import {
   initializeTestEnvironment, assertSucceeds, assertFails
 } from "@firebase/rules-unit-testing";
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where
+  doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where,
+  serverTimestamp
 } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
@@ -639,5 +640,131 @@ describe("the concept page", () => {
     await seed(db => setDoc(doc(db, "conceptBlocks/b1"), { order: 1, title: "Why now" }));
     await assertFails(getDoc(doc(stranger(), "conceptBlocks/b1")));
     await assertFails(getDoc(doc(bogus(),    "conceptBlocks/b1")));
+  });
+});
+
+/* ========================================================================= */
+describe("viewings — the one open door in the hub", () => {
+
+  // A viewing people can sign up to, and the address that must not travel
+  // with the link.
+  async function openViewing(id = "v1", extra = {}) {
+    await seed(async db => {
+      await setDoc(doc(db, "viewings", id),
+        { title: "Property viewing", published: true, open: true, questions: [], ...extra });
+      await setDoc(doc(db, "viewings", id, "private", "details"),
+        { address: "1 Secret Street, London EC1" });
+    });
+  }
+
+  const signup = (over = {}) => ({
+    viewingId: "v1",
+    name: "Dan Collison",
+    email: "danc@farmafrica.example",
+    org: "Farm Africa",
+    role: "Director",
+    guests: 2,
+    answers: { q1: "About 3,500 sq ft" },
+    createdAt: serverTimestamp(),
+    ...over
+  });
+
+  /* -- what the public may see ------------------------------------------ */
+
+  test("a stranger can open a published viewing", async () => {
+    await openViewing();
+    await assertSucceeds(getDoc(doc(stranger(), "viewings/v1")));
+  });
+
+  test("a draft viewing is invisible until it is published", async () => {
+    await openViewing("v1", { published: false });
+    await assertFails(getDoc(doc(stranger(), "viewings/v1")));
+    await assertSucceeds(getDoc(doc(admin(), "viewings/v1")));
+  });
+
+  test("the address never reaches the public document", async () => {
+    await openViewing();
+    await assertFails(getDoc(doc(stranger(), "viewings/v1/private/details")));
+    await assertFails(getDoc(doc(general(), "viewings/v1/private/details")));
+    await assertFails(getDoc(doc(steering(), "viewings/v1/private/details")));
+    await assertSucceeds(getDoc(doc(admin(), "viewings/v1/private/details")));
+  });
+
+  test("a stranger cannot edit the viewing they were sent", async () => {
+    await openViewing();
+    await assertFails(updateDoc(doc(stranger(), "viewings/v1"), { title: "Cancelled" }));
+    await assertFails(updateDoc(doc(general(), "viewings/v1"), { title: "Cancelled" }));
+  });
+
+  /* -- signing up -------------------------------------------------------- */
+
+  test("a stranger with the link can sign up", async () => {
+    await openViewing();
+    await assertSucceeds(setDoc(doc(stranger(), "viewing_signups/s1"), signup()));
+  });
+
+  test("sign-ups stop the moment the viewing is closed", async () => {
+    await openViewing("v1", { open: false });
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"), signup()));
+  });
+
+  test("you cannot sign up to a viewing that does not exist", async () => {
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"), signup({ viewingId: "made-up" })));
+  });
+
+  test("a sign-up cannot smuggle in fields of its own", async () => {
+    await openViewing();
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"),
+      signup({ tier: "admin" })));
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s2"),
+      signup({ notes: "x".repeat(50) })));
+  });
+
+  test("a sign-up cannot choose its own timestamp", async () => {
+    await openViewing();
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"),
+      signup({ createdAt: new Date("2020-01-01") })));
+  });
+
+  test("a sign-up needs a name and something shaped like an email", async () => {
+    await openViewing();
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"), signup({ name: "" })));
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s2"), signup({ email: "not-an-email" })));
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s3"), signup({ email: "two@at@signs.com" })));
+  });
+
+  test("a sign-up cannot bring a coach party or a novel", async () => {
+    await openViewing();
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"), signup({ guests: 500 })));
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s2"), signup({ org: "x".repeat(200) })));
+  });
+
+  /* -- what happens to them afterwards ---------------------------------- */
+
+  test("nobody can read a sign-up back except VOX admin", async () => {
+    await openViewing();
+    await seed(db => setDoc(doc(db, "viewing_signups/s1"),
+      { viewingId: "v1", name: "Dan", email: "d@x.example" }));
+    await assertFails(getDoc(doc(stranger(), "viewing_signups/s1")));
+    await assertFails(getDoc(doc(general(), "viewing_signups/s1")));
+    await assertFails(getDoc(doc(steering(), "viewing_signups/s1")));
+    await assertSucceeds(getDoc(doc(admin(), "viewing_signups/s1")));
+  });
+
+  test("a sign-up cannot be edited or deleted once it is in", async () => {
+    await openViewing();
+    await seed(db => setDoc(doc(db, "viewing_signups/s1"),
+      { viewingId: "v1", name: "Dan", email: "d@x.example" }));
+    await assertFails(updateDoc(doc(stranger(), "viewing_signups/s1"), { name: "Someone else" }));
+    await assertFails(deleteDoc(doc(stranger(), "viewing_signups/s1")));
+    await assertFails(deleteDoc(doc(steering(), "viewing_signups/s1")));
+  });
+
+  test("the whole list of who is coming is admin only", async () => {
+    await openViewing();
+    await seed(db => setDoc(doc(db, "viewing_signups/s1"),
+      { viewingId: "v1", name: "Dan", email: "d@x.example" }));
+    await assertFails(getDocs(collection(steering(), "viewing_signups")));
+    await assertSucceeds(getDocs(collection(admin(), "viewing_signups")));
   });
 });

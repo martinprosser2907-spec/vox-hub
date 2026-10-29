@@ -85,6 +85,30 @@ service cloud.firestore {
           && request.resource.data[field].size() <= maxLen;
     }
 
+    // What a stranger with no account may put in the database.
+    //
+    // "allow create: if true" on its own is an open write endpoint: any
+    // fields, any sizes, any number of documents, forever. This is the whole
+    // guard. It pins the shape, and — the part that matters most — it refuses
+    // anything whose viewing does not exist or is not open, so the endpoint
+    // closes by itself the moment Martin unticks Open.
+    function validSignup() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['viewingId','name','email','org','role','guests','answers','createdAt'])
+          && d.keys().hasAll(['viewingId','name','email','createdAt'])
+          && nonEmpty('viewingId', 120)
+          && nonEmpty('name', 120)
+          && nonEmpty('email', 254)
+          && d.email.matches('^[^@\\s]+@[^@\\s]+[.][^@\\s]+$')
+          && d.get('org', '') is string  && d.get('org', '').size()  <= 160
+          && d.get('role', '') is string && d.get('role', '').size() <= 160
+          && d.get('guests', 0) is int && d.get('guests', 0) >= 0 && d.get('guests', 0) <= 20
+          && d.get('answers', {}) is map && d.get('answers', {}).size() <= 12
+          && d.createdAt == request.time
+          && exists(/databases/$(database)/documents/viewings/$(d.viewingId))
+          && get(/databases/$(database)/documents/viewings/$(d.viewingId)).data.get('open', false) == true;
+    }
+
     // =======================================================================
     // THE VOX PLANNER — unchanged behaviour for legacy accounts, closed to
     // general and steering hub members.
@@ -308,6 +332,46 @@ service cloud.firestore {
       allow read:   if isAdmin();
       allow create: if signedIn();      // anyone may leave a trace
       allow update, delete: if false;   // nobody may rewrite history
+    }
+
+    // =======================================================================
+    // VIEWINGS — the one part of the hub a stranger can reach.
+    //
+    // An invitation to a property viewing goes to charity contacts who have no
+    // hub account, so the sign-up form has to work signed out. It is served
+    // from /viewing.html, which carries no menu and no hub content: the form
+    // and nothing else.
+    //
+    // Two documents per viewing, and the split is load-bearing:
+    //
+    //   viewings/{id}                 PUBLIC once published. Title, date, the
+    //                                 questions. Anyone the link reaches reads
+    //                                 ALL of it.
+    //   viewings/{id}/private/{doc}   the address. Admin only, and read on the
+    //                                 server when the confirmation email goes
+    //                                 out, so it reaches people who actually
+    //                                 signed up and nobody else.
+    //
+    // Firestore grants read on a whole document, never on a field. One address
+    // field in the public document is an address published to everyone that
+    // link is forwarded to — and links are forwarded.
+    //
+    // Unpublished is invisible: a draft cannot be read by anyone but an admin,
+    // which is what makes it safe to write the thing before sending it out.
+    // =======================================================================
+    match /viewings/{id} {
+      allow read:  if resource.data.get('published', false) == true || isAdmin();
+      allow write: if isAdmin();
+
+      match /private/{doc} { allow read, write: if isAdmin(); }
+    }
+
+    // Somebody signing up has no account: they may post one, and never read
+    // any back. The same carve-out shape as requirement_responses above, with
+    // validSignup() doing the work.
+    match /viewing_signups/{id} {
+      allow create: if validSignup();
+      allow read, update, delete: if isAdmin();
     }
 
     match /settings/{id} { allow read: if atLeast(1); allow write: if isAdmin(); }

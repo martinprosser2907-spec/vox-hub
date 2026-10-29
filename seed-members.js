@@ -44,6 +44,9 @@ const PAGES = [
   // The address is also in js/config.js for the link on the Signing page.
   { id: "esign",       title: "VOX eSign",         icon: "✒", order: 115, minTier: 3, enabled: true,
     url: "https://vox-esign.vercel.app/dashboard", external: true },
+  // Viewings and their sign-up forms. Admin only in here; the form itself is
+  // /viewing.html, which is outside this app and needs no account at all.
+  { id: "viewings",    title: "Viewings",          icon: "⌂", order: 118, minTier: 3, enabled: true },
   { id: "people",      title: "People and access", icon: "◍", order: 120, minTier: 3, enabled: true }
 ];
 

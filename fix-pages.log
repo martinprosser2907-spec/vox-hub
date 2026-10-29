@@ -1,0 +1,26 @@
+Firebase project: vox-project-management-dbase
+Service account:  firebase-adminsdk-fbsvc@vox-project-management-dbase.iam.gserviceaccount.com
+
+--- pages collection, as it stands ---
+  concept        view=null     enabled=true minTier=1 title="The concept"
+  documents      view=null     enabled=true minTier=2 title="Document store"
+  esign          view=null     enabled=true minTier=3 title="VOX eSign"
+  gallery        view=null     enabled=true minTier=1 title="Photo gallery"
+  people         view=null     enabled=true minTier=3 title="People and access"
+  planner        view=null     enabled=true minTier=3 title="VOX planner"
+  planning       view=null     enabled=true minTier=2 title="Planning tools"
+  pledge         view=null     enabled=true minTier=1 title="Sign the Pledge"
+  progress       view=null     enabled=true minTier=1 title="Progress"
+  questions      view=null     enabled=true minTier=1 title="Questions"
+  signing        view=null     enabled=true minTier=2 title="Signing"
+  suggestions    view=null     enabled=true minTier=1 title="Suggestions board"
+  tracker        view=null     enabled=true minTier=2 title="Progress tracker"
+  updates        view=null     enabled=true minTier=1 title="Updates"
+
+--- clearing the view field ---
+  documents: already clear
+  people: already clear
+  tracker: already clear
+  planning: already clear
+
+All four pages now load their own view. Reload the hub.

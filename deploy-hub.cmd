@@ -17,7 +17,10 @@ echo.
 
 echo [2 of 4] Deploying functions and security rules...
 echo          (this is the slow one - a few minutes is normal)
-call firebase deploy --only functions,firestore:rules
+echo          (--force clears out the four functions that were wrongly
+echo           deployed to us-central1 on 20 Oct - without it they stay
+echo           behind and the hourly sync runs twice, in two regions)
+call firebase deploy --only functions,firestore:rules --force
 if errorlevel 1 goto fail
 echo.
 

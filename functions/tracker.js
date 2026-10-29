@@ -27,6 +27,16 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 let _db = null;
 const db = () => (_db ??= getFirestore());
 
+// Stated here rather than inherited from index.js, for exactly the same reason
+// as the lazy getFirestore() above. index.js calls
+// setGlobalOptions({ region: "europe-west2" }) in its body, and an imported
+// module is evaluated BEFORE that body runs — so the onCall and onSchedule
+// below are defined while no global region is set, and deploy to us-central1.
+// js/fb.js then calls europe-west2, finds nothing there, and the browser is
+// told "internal" with no clue why. Setting it explicitly makes the deployed
+// region independent of evaluation order.
+const REGION = "europe-west2";
+
 // The planner's stages, in order. Kept here rather than imported because the
 // planner is a separate app — if it renames a stage this list must be updated
 // deliberately, not silently inherit a name nobody here has seen.
@@ -132,7 +142,7 @@ async function writeSummary() {
    it to the minute, and an hourly read of one collection costs nothing.
    ========================================================================= */
 export const syncTracker = onSchedule(
-  { schedule: "every 60 minutes", timeZone: "Europe/London" },
+  { schedule: "every 60 minutes", timeZone: "Europe/London", region: REGION },
   async () => {
     const s = await writeSummary();
     console.info(
@@ -147,7 +157,7 @@ export const syncTracker = onSchedule(
    The same thing on demand, for VOX only, so the tracker can be refreshed
    after a change rather than waiting for the hour.
    ========================================================================= */
-export const refreshTracker = onCall(async (req) => {
+export const refreshTracker = onCall({ region: REGION }, async (req) => {
   if (req.auth?.token?.tier !== "admin") {
     throw new HttpsError("permission-denied", "VOX only.");
   }

@@ -59,11 +59,18 @@ async function go() {
       // somebody who only clicked a menu item.
       try {
         mod = await import(`./views/${name}.js`);
+        cache.set(name, mod);
       } catch (missing) {
-        console.info(`no view for "${name}" — showing the placeholder`);
+        // Deliberately NOT cached. A view can be missing for two very
+        // different reasons: it was never built, or it was deployed a moment
+        // ago and this tab asked a second too early. Caching the placeholder
+        // treats the second as the first — one unlucky click and the page is
+        // stuck on "next on the list" for the life of the tab, no matter what
+        // is actually on the server by then. That cost half an hour on
+        // 20 Oct 2026, with everything deployed and working.
+        console.info(`no view for "${name}" — placeholder, will retry next time`);
         mod = await import("./views/soon.js");
       }
-      cache.set(name, mod);
     }
     const stop = await mod.render(view, ctx, page);
     if (typeof stop === "function") cleanup = stop;

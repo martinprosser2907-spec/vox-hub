@@ -26,6 +26,12 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 // Resolved on first use instead, by which time index.js has initialised.
 let _db = null;
 const db = () => (_db ??= getFirestore());
+
+// Explicit for the same reason as the lazy getFirestore() above: index.js
+// calls setGlobalOptions({ region: "europe-west2" }) in its body, which runs
+// AFTER this imported module is evaluated. Without this the two callables
+// below deploy to us-central1 while js/fb.js calls europe-west2.
+const REGION = "europe-west2";
 const TIERS = ["general", "steering", "admin"];
 
 // The four sections, and the fields in each.
@@ -157,7 +163,7 @@ const emptyPack = (org) => ({
 /* =========================================================================
    Read. A charity gets its own pack. Admin may ask for any, or for the list.
    ========================================================================= */
-export const planningPack = onCall(async (req) => {
+export const planningPack = onCall({ region: REGION }, async (req) => {
   const me = await callerOrg(req);
 
   // Admin asking for somebody else's, or for all of them.
@@ -192,7 +198,7 @@ export const planningPack = onCall(async (req) => {
    Write. One section at a time, and only fields this code knows about —
    a pack is not a place to put arbitrary data just because it is yours.
    ========================================================================= */
-export const savePlanningSection = onCall(async (req) => {
+export const savePlanningSection = onCall({ region: REGION }, async (req) => {
   const me = await callerOrg(req);
 
   const section = String(req.data?.section || "");

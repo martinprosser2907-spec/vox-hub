@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Viewing sign-up — VOX London</title>
+<meta name="description" content="Sign up for a VOX London property viewing.">
+<meta name="theme-color" content="#3c3c3c">
+<meta name="color-scheme" content="light">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" href="/assets/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  /* This page is not the app. No menu, no sign-in, no service worker — one
+     card on the VOX grey, the same as the sign-in screen, so it still looks
+     like VOX to somebody who has never seen the hub. */
+  .v-wrap{min-height:100dvh;display:grid;place-items:start center;
+          padding:40px 20px;background:var(--vox-grey)}
+  .v-card{width:100%;max-width:620px;background:var(--vox-paper);
+          padding:40px 36px;box-shadow:var(--vox-shadow)}
+  .v-logo{width:96px;margin-bottom:26px;filter:invert(1)}
+  .v-meta{font-size:14px;color:var(--vox-brick);font-weight:600;
+          letter-spacing:1.4px;text-transform:uppercase;margin:0 0 6px}
+  .v-foot{margin:26px 0 0;font-size:12.5px;line-height:1.55;color:var(--vox-muted)}
+  .v-hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+  @media (max-width:560px){ .v-card{padding:30px 22px} .v-wrap{padding:20px 12px} }
+</style>
+</head>
+<body>
+
+<div class="v-wrap">
+  <div class="v-card" id="v-card">
+    <img class="v-logo" src="/assets/logo.png" alt="VOX">
+    <div class="skel" style="width:70%;margin-bottom:10px"></div>
+    <div class="skel" style="width:45%"></div>
+  </div>
+</div>
+
+<script type="module" src="/js/viewing.js"></script>
+</body>
+</html>
