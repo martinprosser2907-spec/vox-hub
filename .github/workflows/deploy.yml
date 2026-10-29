@@ -45,7 +45,7 @@ jobs:
       - name: Gather the files a browser actually needs
         run: |
           mkdir -p site
-          cp -r index.html 404.html manifest.webmanifest sw.js assets js site/
+          cp -r index.html viewing.html 404.html manifest.webmanifest sw.js assets js site/
           cp CNAME site/
 
       - name: Stamp this build
@@ -76,6 +76,7 @@ jobs:
           fi
           test -f site/CNAME || { echo "::error::CNAME is missing — voxlondon.uk would stop working."; exit 1; }
           test -f site/index.html || { echo "::error::index.html is missing."; exit 1; }
+          test -f site/viewing.html || { echo "::error::viewing.html is missing - every viewing link already sent out would 404."; exit 1; }
           echo "Publishing $(find site -type f | wc -l) files."
 
       - uses: actions/upload-pages-artifact@v3
