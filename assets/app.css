@@ -336,3 +336,12 @@ input.code{font-family:var(--vox-mono);font-size:27px;letter-spacing:.34em;text-
   .step:after{top:4px;left:0;transform:none}
   .ask{right:8px;left:8px;width:auto;bottom:84px}
 }
+
+/* ---- "a newer version is ready" --------------------------------------
+   Offered, never forced. Reloading out from under somebody halfway through
+   typing a viewing would be worse than the staleness it fixes. */
+.freshbar{position:fixed;left:50%;transform:translateX(-50%);bottom:26px;z-index:60;
+  display:flex;align-items:center;gap:14px;background:var(--vox-grey);color:#fff;
+  padding:12px 14px 12px 20px;box-shadow:var(--vox-shadow);
+  font-size:14px;max-width:calc(100vw - 32px)}
+.freshbar .btn{flex:none}

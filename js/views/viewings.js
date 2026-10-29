@@ -20,8 +20,8 @@
 // field in the public document is an address published to everyone the link
 // is forwarded to.
 // ---------------------------------------------------------------------------
-import { db, doc, getDoc, setDoc, addDoc, deleteDoc, collection, query,
-         orderBy, onSnapshot, serverTimestamp } from "../fb.js";
+import { db, doc, getDoc, setDoc, addDoc, deleteDoc, collection, query, where,
+         getDocs, orderBy, onSnapshot, serverTimestamp } from "../fb.js";
 import { esc, toast, when } from "../ui.js";
 
 const PUBLIC_BASE = location.origin + "/viewing.html?v=";
@@ -181,6 +181,13 @@ function drawEditor(view, v) {
     </div>
 
     <div class="card">
+      <div class="item-h"><span class="ttl" style="font-size:19px">Who has signed up</span>
+        <button class="btn btn-sm btn-ghost" id="s-refresh" style="margin-left:auto">Refresh</button>
+        <button class="btn btn-sm btn-ghost" id="s-csv">Download</button></div>
+      <div id="s-list" style="margin-top:14px"><p class="muted small">Loading...</p></div>
+    </div>
+
+    <div class="card">
       <h2>Publishing</h2>
       <label style="display:flex;gap:9px;align-items:center;font-size:14px;margin-bottom:10px">
         <input type="checkbox" id="f-pub" style="width:auto" ${v.published ? "checked" : ""}>
@@ -211,6 +218,9 @@ function drawEditor(view, v) {
   }).catch(() => { view.querySelector("#f-addr").placeholder = "Could not load the address."; });
 
   drawQuestions(view);
+  loadSignups(view, v);
+  view.querySelector("#s-refresh").addEventListener("click", () => loadSignups(view, v));
+  view.querySelector("#s-csv").addEventListener("click", () => downloadCsv(v));
 
   view.querySelector("#v-back").addEventListener("click", () => { editing = null; draw(view); });
 
@@ -330,4 +340,88 @@ function drawQuestions(view) {
       drawQuestions(view);
     });
   });
+}
+
+/* ---- who has signed up -------------------------------------------------
+   A plain equality query, sorted here rather than in Firestore. Adding an
+   orderBy would make this a composite query, and a composite query needs an
+   index that does not exist — which would fail at the worst possible moment,
+   the morning of the viewing.
+   -------------------------------------------------------------------------- */
+
+let lastRows = [];
+
+async function loadSignups(view, v) {
+  const box = view.querySelector("#s-list");
+  if (!box) return;
+  box.innerHTML = `<p class="muted small">Loading…</p>`;
+  try {
+    const snap = await getDocs(query(collection(db, "viewing_signups"),
+                                     where("viewingId", "==", v.id)));
+    const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
+    lastRows = rows;
+
+    if (!rows.length) {
+      box.innerHTML = `<p class="muted small">Nobody yet. They appear here as they sign up,
+        and you get an email each time.</p>`;
+      return;
+    }
+
+    const qs = v.questions || [];
+    const people = rows.reduce((n, r) => n + (Number(r.guests) || 1), 0);
+
+    box.innerHTML = `
+      <p class="small muted" style="margin:0 0 12px">
+        <b>${rows.length}</b> sign-up${rows.length === 1 ? "" : "s"},
+        <b>${people}</b> ${people === 1 ? "person" : "people"} expected.</p>
+      <ul class="list">${rows.map(r => `<li>
+        <div class="item-h"><span class="ttl">${esc(r.name || "")}</span>
+          ${r.org ? `<span class="tag">${esc(r.org)}</span>` : ""}
+          <time style="margin-left:auto">${when(r.createdAt)}</time></div>
+        <div class="small muted" style="margin-top:4px">
+          ${esc(r.email || "")}${r.role ? " · " + esc(r.role) : ""} ·
+          ${esc(String(r.guests ?? 1))} coming${r.confirmationSent === false
+            ? ` · <b style="color:var(--vox-bad)">confirmation did not send — they have not got the address</b>`
+            : ""}</div>
+        ${qs.map((q, i) => {
+          const a = (r.answers || {})[q.key || ("q" + (i + 1))];
+          return a ? `<div class="small" style="margin-top:5px">
+            <span class="muted">${esc(q.label || "")}:</span> ${esc(a)}</div>` : "";
+        }).join("")}
+      </li>`).join("")}</ul>`;
+  } catch (err) {
+    console.error("signups", err);
+    box.innerHTML = `<p class="muted small">Could not load the sign-ups.</p>`;
+  }
+}
+
+// Excel treats a cell opening with "=", "+", "-" or "@" as a formula. A
+// person's name is not a spreadsheet instruction, so anything starting that
+// way gets a leading quote.
+function csvCell(value) {
+  let t = String(value ?? "");
+  if (/^[=+\-@]/.test(t)) t = "'" + t;
+  return `"${t.replace(/"/g, '""')}"`;
+}
+
+function downloadCsv(v) {
+  if (!lastRows.length) { toast("Nothing to download yet."); return; }
+  const qs = v.questions || [];
+  const head = ["Name", "Email", "Organisation", "Job title", "Coming",
+                ...qs.map(q => q.label || ""), "Signed up", "Confirmation sent"];
+  const body = lastRows.map(r => [
+    r.name, r.email, r.org, r.role, r.guests ?? 1,
+    ...qs.map((q, i) => (r.answers || {})[q.key || ("q" + (i + 1))] || ""),
+    when(r.createdAt), r.confirmationSent === false ? "NO" : "yes"
+  ]);
+
+  const csv = [head, ...body].map(row => row.map(csvCell).join(",")).join("\r\n");
+  const name = (v.title || "viewing").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+  const a = document.createElement("a");
+  // The BOM is what makes Excel open a UTF-8 CSV without mangling an accent.
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `${name}-signups.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }

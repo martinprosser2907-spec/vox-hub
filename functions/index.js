@@ -602,3 +602,11 @@ export const remindSigner = onCall({ secrets: ["VOX_SERVICE_KEY"] }, async (req)
    ========================================================================= */
 export { syncTracker, refreshTracker } from "./tracker.js";
 export { planningPack, savePlanningSection } from "./planning.js";
+
+/* =========================================================================
+   Viewing sign-ups — the confirmation email, and the alert to Martin.
+   Defined in its own file, with its region set there rather than relying on
+   setGlobalOptions above, because a re-exported trigger can be defined before
+   that call runs.
+   ========================================================================= */
+export { onViewingSignup } from "./viewings.js";
