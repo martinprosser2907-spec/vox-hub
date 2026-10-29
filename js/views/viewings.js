@@ -378,7 +378,9 @@ async function loadSignups(view, v) {
       <ul class="list">${rows.map(r => `<li>
         <div class="item-h"><span class="ttl">${esc(r.name || "")}</span>
           ${r.org ? `<span class="tag">${esc(r.org)}</span>` : ""}
-          <time style="margin-left:auto">${when(r.createdAt)}</time></div>
+          <time style="margin-left:auto">${when(r.createdAt)}</time>
+          <button class="btn btn-sm btn-ghost s-del" data-id="${esc(r.id)}"
+                  data-name="${esc(r.name || "")}">Remove</button></div>
         <div class="small muted" style="margin-top:4px">
           ${esc(r.email || "")}${r.role ? " · " + esc(r.role) : ""} ·
           ${esc(String(r.guests ?? 1))} coming${r.confirmationSent === false
@@ -390,6 +392,25 @@ async function loadSignups(view, v) {
             <span class="muted">${esc(q.label || "")}:</span> ${esc(a)}</div>` : "";
         }).join("")}
       </li>`).join("")}</ul>`;
+
+    // Removing a sign-up is not undoable and the person is not told, so it
+    // asks first and names who it is about to drop. Test entries are the
+    // point of it; a real one removed by accident is somebody turning up to
+    // a building nobody is expecting them at.
+    box.querySelectorAll(".s-del").forEach(b => b.addEventListener("click", async () => {
+      if (!confirm(`Remove the sign-up for ${b.dataset.name || "this person"}?\n\n`
+                 + `They are not told, and this cannot be undone.`)) return;
+      b.disabled = true;
+      try {
+        await deleteDoc(doc(db, "viewing_signups", b.dataset.id));
+        toast("Removed.");
+        loadSignups(view, v);
+      } catch (err) {
+        console.error(err);
+        toast("Could not remove that.");
+        b.disabled = false;
+      }
+    }));
   } catch (err) {
     console.error("signups", err);
     box.innerHTML = `<p class="muted small">Could not load the sign-ups.</p>`;
