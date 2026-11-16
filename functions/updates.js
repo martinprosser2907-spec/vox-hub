@@ -2,7 +2,7 @@
 // Hub updates, emailed out.
 //
 // An admin writes an update on the Updates page. This function turns it into
-// the branded email (the same wrapEmail as the sign-in code, so nothing drifts
+// the branded email (updateEmail.js — the same file the editor previews with, so nothing drifts
 // out of house style) and sends one email per person, so nobody sees anyone
 // else's address.
 //
@@ -17,7 +17,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getFirestore, FieldValue, Timestamp } from "firebase-admin/firestore";
 import { BRAND } from "./brand.js";
-import { wrapEmail, esc } from "./email.js";
+import { renderUpdateEmail, mdToText } from "./updateEmail.js";
 
 let _db = null;
 const db = () => (_db ??= getFirestore());   // see tracker.js: resolved on first use
@@ -28,51 +28,6 @@ const REPLY_TO = "martin@voxhouses.global";
 const INTERNAL = /@(voxhouses\.global|prossermanagement\.uk|scancastle\.com|example\.com)$/i;
 const MAX_RECIPIENTS = 400;
 const okEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
-
-// ---- the update body: a small, safe markdown -------------------------------
-//   ## Heading       - bullet       **bold**       [text](https://link)
-//   Blank line = new paragraph.
-const P  = `margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:${BRAND.ink};`;
-const H2 = `margin:26px 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.3;font-weight:bold;color:${BRAND.grey};`;
-const UL = `margin:0 0 16px;padding-left:22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:${BRAND.ink};`;
-
-const IMG = /^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/;
-
-function inline(s) {
-  return esc(s)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
-      `<a href="$2" style="color:${BRAND.grey};text-decoration:underline;">$1</a>`);
-}
-
-export function mdToEmailHtml(text) {
-  const blocks = String(text || "").replace(/\r/g, "").split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
-  return blocks.map(b => {
-    if (b.startsWith("## ")) return `<h2 style="${H2}">${inline(b.slice(3))}</h2>`;
-    const lines = b.split("\n");
-    // A block made only of photos: ![caption](https://...) one per line.
-    if (lines.every(l => IMG.test(l.trim()))) {
-      return lines.map(l => {
-        const [, alt, url] = l.trim().match(IMG);
-        return `<div style="margin:0 0 18px;"><img src="${esc(url)}" alt="${esc(alt)}" width="520"
-          style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:4px;">${alt
-          ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:${BRAND.muted};margin-top:6px;">${esc(alt)}</div>` : ""}</div>`;
-      }).join("");
-    }
-    if (lines.every(l => /^\s*[-•]\s+/.test(l))) {
-      return `<ul style="${UL}">${lines.map(l => `<li style="margin:0 0 6px;">${inline(l.replace(/^\s*[-•]\s+/, ""))}</li>`).join("")}</ul>`;
-    }
-    return `<p style="${P}">${lines.map(inline).join("<br>")}</p>`;
-  }).join("");
-}
-
-function mdToText(text) {
-  return String(text || "").replace(/\r/g, "")
-    .replace(/^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/gm, "[Photo: $1] $2")
-    .replace(/^## /gm, "").replace(/\*\*(.+?)\*\*/g, "$1")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1 ($2)")
-    .replace(/^\s*[-•]\s+/gm, "• ");
-}
 
 // ---- who gets it -------------------------------------------------------------
 export const GROUPS = {
@@ -154,9 +109,12 @@ export const sendUpdate = onCall({ region: REGION, secrets: ["RESEND_API_KEY"], 
   if (!u.title || !u.body) throw new HttpsError("failed-precondition", "The update needs a title and some text.");
 
   const firstLine = mdToText(u.body).split("\n").find(l => l.trim() && !/^(hello|hi|dear)\b/i.test(l.trim())) || "";
-  const html = wrapEmail({
+  const d = u.date && u.date.toDate ? u.date.toDate() : new Date();
+  const html = renderUpdateEmail({
     title: u.title,
-    bodyHtml: mdToEmailHtml(u.body),
+    body: u.body,
+    tag: u.tag || "Update",
+    dateText: d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" }),
     ctaLabel: u.ctaLabel || "Read it on the hub",
     ctaHref: u.ctaHref || `${BRAND.hubUrl}/#/updates`,
     preheader: firstLine.slice(0, 140)

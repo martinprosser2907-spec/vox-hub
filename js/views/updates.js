@@ -14,51 +14,15 @@ import {
 import { esc, when, toast, tierOf } from "../ui.js";
 
 const HUB_URL = "https://voxlondon.uk";
-const GREY = "#3c3c3c", BRICK = "#f28d65", INK = "#1c1c1c", WASH = "#f6f6f6";
 
-// ---- the shared little markdown --------------------------------------------
-const IMG = /^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/;
-function inline(s) {
-  return esc(s)
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, `<a href="$2" target="_blank" rel="noopener">$1</a>`);
-}
-export function md(text, emailStyles = false) {
-  const P  = emailStyles ? ` style="margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:${INK};"` : "";
-  const H2 = emailStyles ? ` style="margin:26px 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.3;font-weight:bold;color:${GREY};"` : ` style="font-size:17px;margin:18px 0 6px"`;
-  const UL = emailStyles ? ` style="margin:0 0 16px;padding-left:22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:${INK};"` : ` style="margin:0 0 12px;padding-left:22px"`;
-  const blocks = String(text || "").replace(/\r/g, "").split(/\n{2,}/).map(b => b.trim()).filter(Boolean);
-  return blocks.map(b => {
-    if (b.startsWith("## ")) return `<h3${H2}>${inline(b.slice(3))}</h3>`;
-    const lines = b.split("\n");
-    if (lines.every(l => IMG.test(l.trim()))) {
-      return lines.map(l => {
-        const [, alt, url] = l.trim().match(IMG);
-        const img = emailStyles
-          ? `<img src="${esc(url)}" alt="${esc(alt)}" width="520" style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:4px;">`
-          : `<img src="${esc(url)}" alt="${esc(alt)}" loading="lazy" style="display:block;max-width:100%;height:auto;border-radius:6px">`;
-        const cap = alt ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#646464;margin-top:6px">${esc(alt)}</div>` : "";
-        return `<div style="margin:0 0 18px">${img}${cap}</div>`;
-      }).join("");
-    }
-    if (lines.every(l => /^\s*[-•]\s+/.test(l))) {
-      return `<ul${UL}>${lines.map(l => `<li style="margin:0 0 6px">${inline(l.replace(/^\s*[-•]\s+/, ""))}</li>`).join("")}</ul>`;
-    }
-    return `<p${P}>${lines.map(inline).join("<br>")}</p>`;
-  }).join("");
-}
-
-// A copy of functions/email.js wrapEmail(), for the preview only.
-function emailPreview(u) {
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;background:${WASH};">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${WASH};"><tr><td align="center" style="padding:24px 12px;">
-  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:600px;max-width:100%;background:#fff;border-collapse:collapse;">
-    <tr><td style="background:${GREY};padding:26px 40px;"><span style="font-family:Arial,Helvetica,sans-serif;font-size:21px;font-weight:bold;letter-spacing:3px;color:#fff;">VOX</span><span style="font-family:Arial,Helvetica,sans-serif;font-size:14px;letter-spacing:2px;color:${BRICK};padding-left:10px;">LONDON</span></td></tr>
-    <tr><td style="padding:40px 40px 8px;"><h1 style="margin:0 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:25px;line-height:1.25;font-weight:normal;color:${INK};">${esc(u.title || "Your title")}</h1>${md(u.body, true)}</td></tr>
-    <tr><td style="padding:12px 40px 34px;"><a href="#" style="display:inline-block;background:${BRICK};color:#fff;font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:bold;text-decoration:none;padding:13px 26px;border-radius:4px;">${esc(u.ctaLabel || "Read it on the hub")}</a></td></tr>
-    <tr><td style="background:${GREY};padding:20px 40px;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.6);">VOX London Hub &middot; you are receiving this because your organisation is part of the VOX London founding group. Questions: martin@voxhouses.global</p></td></tr>
-  </table></td></tr></table></body></html>`;
-}
+// The email template, shared with functions/updateEmail.js (identical copy),
+// so the preview and the hub page match what people receive.
+import { renderUpdateEmail, mdToHtml } from "../updateEmail.js";
+const md = (text) => mdToHtml(text);
+const longDate = (ts) => {
+  const d = ts && ts.toDate ? ts.toDate() : new Date();
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+};
 
 const GROUPS = [
   ["members",  "Hub members", "everyone who can sign in to the hub"],
@@ -125,7 +89,7 @@ export function render(view, ctx) {
       ctaLabel: document.getElementById("ue-cta").value.trim(),
       ctaHref: document.getElementById("ue-href").value.trim()
     });
-    const preview = () => { document.getElementById("ue-preview").srcdoc = emailPreview(read()); };
+    const preview = () => { const v = read(); document.getElementById("ue-preview").srcdoc = renderUpdateEmail({ ...v, dateText: longDate(u?.date), ctaHref: v.ctaHref || HUB_URL + "/#/updates" }); };
     box.querySelectorAll("input,textarea").forEach(i => i.addEventListener("input", preview));
     preview();
 
