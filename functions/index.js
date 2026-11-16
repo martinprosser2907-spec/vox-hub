@@ -610,3 +610,6 @@ export { planningPack, savePlanningSection } from "./planning.js";
    that call runs.
    ========================================================================= */
 export { onViewingSignup } from "./viewings.js";
+
+// Hub updates, written on the Updates page and emailed out by an admin.
+export { sendUpdate } from "./updates.js";
