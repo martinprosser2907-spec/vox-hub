@@ -9,7 +9,7 @@
 // ---------------------------------------------------------------------------
 import {
   db, collection, query, orderBy, limit, onSnapshot, doc, addDoc, updateDoc, deleteDoc,
-  arrayUnion, serverTimestamp, callable
+  arrayUnion, serverTimestamp, callable, storage, storageRef, uploadBytesResumable, getDownloadURL
 } from "../fb.js";
 import { esc, when, toast, tierOf } from "../ui.js";
 
@@ -17,6 +17,7 @@ const HUB_URL = "https://voxlondon.uk";
 const GREY = "#3c3c3c", BRICK = "#f28d65", INK = "#1c1c1c", WASH = "#f6f6f6";
 
 // ---- the shared little markdown --------------------------------------------
+const IMG = /^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/;
 function inline(s) {
   return esc(s)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
@@ -30,6 +31,16 @@ export function md(text, emailStyles = false) {
   return blocks.map(b => {
     if (b.startsWith("## ")) return `<h3${H2}>${inline(b.slice(3))}</h3>`;
     const lines = b.split("\n");
+    if (lines.every(l => IMG.test(l.trim()))) {
+      return lines.map(l => {
+        const [, alt, url] = l.trim().match(IMG);
+        const img = emailStyles
+          ? `<img src="${esc(url)}" alt="${esc(alt)}" width="520" style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:4px;">`
+          : `<img src="${esc(url)}" alt="${esc(alt)}" loading="lazy" style="display:block;max-width:100%;height:auto;border-radius:6px">`;
+        const cap = alt ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:#646464;margin-top:6px">${esc(alt)}</div>` : "";
+        return `<div style="margin:0 0 18px">${img}${cap}</div>`;
+      }).join("");
+    }
     if (lines.every(l => /^\s*[-•]\s+/.test(l))) {
       return `<ul${UL}>${lines.map(l => `<li style="margin:0 0 6px">${inline(l.replace(/^\s*[-•]\s+/, ""))}</li>`).join("")}</ul>`;
     }
@@ -85,6 +96,11 @@ export function render(view, ctx) {
         <button class="vote btn-sm" data-ins="b">Bold</button>
         <button class="vote btn-sm" data-ins="l">Bullet list</button>
         <button class="vote btn-sm" data-ins="a">Link</button>
+        <button class="vote btn-sm" id="ue-photo">📷 Add photos</button>
+        <button class="vote btn-sm" id="ue-file">📎 Attach a file</button>
+        <input type="file" id="ue-photo-in" accept="image/*" multiple hidden>
+        <input type="file" id="ue-file-in" multiple hidden>
+        <span class="small muted" id="ue-up" style="align-self:center"></span>
         <span class="small muted" style="align-self:center">Blank line = new paragraph</span>
       </div>
       <textarea id="ue-body" style="width:100%;min-height:280px;font:inherit;font-size:14px;line-height:1.6;padding:12px;box-sizing:border-box">${esc(u?.body || "")}</textarea>
@@ -130,6 +146,64 @@ export function render(view, ctx) {
       ta.focus();
       preview();
     }));
+
+    // ---- photos and files ----
+    // Photos are shrunk to 1600px wide before upload, so emails stay light.
+    const shrink = (file) => new Promise((resolve) => {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type)) return resolve(file);
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 1600 / img.width);
+        if (scale === 1 && file.size < 1.5 * 1024 * 1024) return resolve(file);
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(b => resolve(b ? new File([b], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }) : file), "image/jpeg", 0.85);
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+    const upload = async (file) => {
+      const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-80);
+      const ref = storageRef(storage, `updates/${Date.now()}-${safe}`);
+      const task = uploadBytesResumable(ref, file, { contentType: file.type || "application/octet-stream" });
+      await new Promise((ok, fail) => task.on("state_changed",
+        s => { document.getElementById("ue-up").textContent = `Uploading ${file.name}… ${Math.round(s.bytesTransferred / s.totalBytes * 100)}%`; },
+        fail, ok));
+      return getDownloadURL(task.snapshot.ref);
+    };
+    const insertBlock = (text) => {
+      const pos = ta.selectionEnd;
+      ta.setRangeText(`\n\n${text}\n\n`, pos, pos, "end");
+      ta.focus(); preview();
+    };
+    document.getElementById("ue-photo").onclick = (e) => { e.preventDefault(); document.getElementById("ue-photo-in").click(); };
+    document.getElementById("ue-file").onclick = (e) => { e.preventDefault(); document.getElementById("ue-file-in").click(); };
+    document.getElementById("ue-photo-in").onchange = async (e) => {
+      const files = [...e.target.files]; e.target.value = "";
+      const lines = [];
+      for (const f of files) {
+        if (f.size > 20 * 1024 * 1024) { toast(`${f.name} is over 20 MB`); continue; }
+        try {
+          const url = await upload(await shrink(f));
+          const cap = prompt(`Caption for ${f.name} (optional)`, "") || "";
+          lines.push(`![${cap.replace(/[\[\]]/g, "")}](${url})`);
+        } catch (err) { toast("Upload failed — " + (err.message || err)); }
+      }
+      document.getElementById("ue-up").textContent = "";
+      if (lines.length) insertBlock(lines.join("\n"));
+    };
+    document.getElementById("ue-file-in").onchange = async (e) => {
+      const files = [...e.target.files]; e.target.value = "";
+      const lines = [];
+      for (const f of files) {
+        if (f.size > 20 * 1024 * 1024) { toast(`${f.name} is over 20 MB`); continue; }
+        try { lines.push(`- [📎 ${f.name.replace(/[\[\]]/g, "")}](${await upload(f)})`); }
+        catch (err) { toast("Upload failed — " + (err.message || err)); }
+      }
+      document.getElementById("ue-up").textContent = "";
+      if (lines.length) insertBlock(lines.join("\n"));
+    };
 
     const save = async (published) => {
       const v = read();

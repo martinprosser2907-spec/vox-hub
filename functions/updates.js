@@ -36,6 +36,8 @@ const P  = `margin:0 0 16px;font-family:Arial,Helvetica,sans-serif;font-size:15p
 const H2 = `margin:26px 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:18px;line-height:1.3;font-weight:bold;color:${BRAND.grey};`;
 const UL = `margin:0 0 16px;padding-left:22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.7;color:${BRAND.ink};`;
 
+const IMG = /^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/;
+
 function inline(s) {
   return esc(s)
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
@@ -48,6 +50,15 @@ export function mdToEmailHtml(text) {
   return blocks.map(b => {
     if (b.startsWith("## ")) return `<h2 style="${H2}">${inline(b.slice(3))}</h2>`;
     const lines = b.split("\n");
+    // A block made only of photos: ![caption](https://...) one per line.
+    if (lines.every(l => IMG.test(l.trim()))) {
+      return lines.map(l => {
+        const [, alt, url] = l.trim().match(IMG);
+        return `<div style="margin:0 0 18px;"><img src="${esc(url)}" alt="${esc(alt)}" width="520"
+          style="display:block;width:100%;max-width:520px;height:auto;border:0;border-radius:4px;">${alt
+          ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:1.5;color:${BRAND.muted};margin-top:6px;">${esc(alt)}</div>` : ""}</div>`;
+      }).join("");
+    }
     if (lines.every(l => /^\s*[-•]\s+/.test(l))) {
       return `<ul style="${UL}">${lines.map(l => `<li style="margin:0 0 6px;">${inline(l.replace(/^\s*[-•]\s+/, ""))}</li>`).join("")}</ul>`;
     }
@@ -57,6 +68,7 @@ export function mdToEmailHtml(text) {
 
 function mdToText(text) {
   return String(text || "").replace(/\r/g, "")
+    .replace(/^!\[([^\]]*)\]\((https:\/\/[^)\s]+)\)$/gm, "[Photo: $1] $2")
     .replace(/^## /gm, "").replace(/\*\*(.+?)\*\*/g, "$1")
     .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1 ($2)")
     .replace(/^\s*[-•]\s+/gm, "• ");

@@ -34,6 +34,15 @@ service firebase.storage {
       allow delete: if atLeast(3);
     }
 
+    // Photos and files used in Updates. Everyone in may look; only VOX uploads.
+    // The emails link to these by their download URL, which carries its own
+    // token, so a recipient who is not signed in to the hub can still see them.
+    match /updates/{allPaths=**} {
+      allow read:   if atLeast(1);
+      allow write:  if atLeast(3) && under(20);
+      allow delete: if atLeast(3);
+    }
+
     // Steering Group papers, filed under the uid of whoever added them:
     // documents/<uid>/<timestamp>-<name>.
     //
