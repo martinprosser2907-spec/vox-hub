@@ -118,13 +118,22 @@ async function buildSummary() {
     if (s.exists) manual = s.data() || {};
   } catch { /* settings are optional; the tracker still works without them */ }
 
+  // The pledge target comes from the planner's workplan (Fred's plan goal "~15 signed"),
+  // so the hub follows the CRM. settings/tracker can still override it by hand.
+  let planTarget = null;
+  try {
+    const w = await db().collection("config").doc("workplan").get();
+    const goal = ((w.exists && w.data().goals) || []).find((g) => g && g.metric === "signedCount");
+    if (goal && Number(goal.target) > 0) planTarget = Number(goal.target);
+  } catch { /* fall back to settings or 10 */ }
+
   return {
     stages,
     unknownStage,
     totalDeals: snap.size,
     pledgedCount,
     pledgedSqft,
-    pledgeTarget:  Number(manual.pledgeTarget) > 0 ? Number(manual.pledgeTarget) : 10,
+    pledgeTarget:  Number(manual.pledgeTarget) > 0 ? Number(manual.pledgeTarget) : (planTarget || 10),
     sitesReviewed: Number(manual.sitesReviewed) >= 0 ? Number(manual.sitesReviewed) : null,
     namedStages: [...NAMED_STAGES],
     organisations,
