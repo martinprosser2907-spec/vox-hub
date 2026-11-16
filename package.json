@@ -6,7 +6,7 @@
   "description": "VOX London Hub \u2014 security rules, sign-in functions and design tokens",
   "scripts": {
     "test:rules": "firebase emulators:exec --only firestore,storage --project vox-hub-test \"vitest run\"",
-    "test:views": "vitest run tests/concept-view.test.mjs tests/viewing-form.test.mjs",
+    "test:views": "vitest run tests/concept-view.test.mjs tests/viewing-form.test.mjs tests/viewings-admin.test.mjs",
     "deploy:rules": "firebase deploy --only firestore:rules,storage",
     "deploy:functions": "firebase deploy --only functions",
     "seed": "node seed-members.js",

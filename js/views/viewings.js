@@ -41,7 +41,9 @@ const TYPES = {
 // to ask for yourself.
 const ALWAYS = ["Name", "Email", "Organisation", "Job title", "How many people"];
 
-let editing = null;   // viewing id being edited, or null for the list
+let editing  = null;  // viewing id being edited
+let showing  = null;  // viewing id whose attendee list is open
+                      // both null = the list of viewings
 let qs = [];          // the question rows while editing
 let seq = 0;
 
@@ -65,6 +67,7 @@ export function render(view, ctx) {
 function draw(view) {
   const rows = view._rows || [];
   if (editing) return drawEditor(view, rows.find(r => r.id === editing));
+  if (showing) return drawAttendees(view, rows.find(r => r.id === showing));
 
   view.innerHTML = `
     <div class="card">
@@ -91,6 +94,15 @@ function draw(view) {
     editing = ref.id; qs = []; draw(view);
   });
 
+  view.querySelectorAll("[data-who]").forEach(b => b.addEventListener("click", () => {
+    showing = b.dataset.who;
+    draw(view);
+  }));
+
+  // The headcount is filled in after the cards are on screen, so the page is
+  // never held up waiting for it — and a viewing with nobody yet still draws.
+  rows.forEach(v => countInto(view, v));
+
   view.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => {
     editing = b.dataset.edit;
     qs = (rows.find(r => r.id === editing)?.questions || [])
@@ -114,10 +126,12 @@ function card(v) {
     <p class="small muted" style="margin:6px 0 0">
       ${esc([v.dateText, v.timeText, v.publicLocation].filter(Boolean).join(" · ") || "No date set yet")}
       · ${(v.questions || []).length} question${(v.questions || []).length === 1 ? "" : "s"}</p>
+    <p class="small" style="margin:8px 0 0" data-count="${esc(v.id)}">&nbsp;</p>
     ${v.published ? `<p class="small" style="margin:12px 0 0">
       <span class="linkish" style="word-break:break-all">${esc(link)}</span></p>` : ""}
     <div style="display:flex;gap:9px;margin-top:14px;flex-wrap:wrap">
-      <button class="btn btn-sm" data-edit="${esc(v.id)}">Edit</button>
+      <button class="btn btn-sm" data-who="${esc(v.id)}">Who is coming</button>
+      <button class="btn btn-sm btn-ghost" data-edit="${esc(v.id)}">Edit</button>
       <a class="btn btn-sm btn-ghost" href="${esc(link)}" target="_blank" rel="noopener">Preview</a>
       ${v.published ? `<button class="btn btn-sm btn-ghost" data-copy="${esc(link)}">Copy the link</button>
         <a class="btn btn-sm btn-ghost" href="${esc(link)}" target="_blank" rel="noopener">Open it</a>` : ""}
@@ -180,12 +194,7 @@ function drawEditor(view, v) {
       <p class="small muted" style="margin:10px 0 0">Up to ${MAX_QUESTIONS}.</p>
     </div>
 
-    <div class="card">
-      <div class="item-h"><span class="ttl" style="font-size:19px">Who has signed up</span>
-        <button class="btn btn-sm btn-ghost" id="s-refresh" style="margin-left:auto">Refresh</button>
-        <button class="btn btn-sm btn-ghost" id="s-csv">Download</button></div>
-      <div id="s-list" style="margin-top:14px"><p class="muted small">Loading...</p></div>
-    </div>
+    ${signupsPanel()}
 
     <div class="card">
       <h2>Publishing</h2>
@@ -218,11 +227,9 @@ function drawEditor(view, v) {
   }).catch(() => { view.querySelector("#f-addr").placeholder = "Could not load the address."; });
 
   drawQuestions(view);
-  loadSignups(view, v);
-  view.querySelector("#s-refresh").addEventListener("click", () => loadSignups(view, v));
-  view.querySelector("#s-csv").addEventListener("click", () => downloadCsv(v));
+  wireSignups(view, v);
 
-  view.querySelector("#v-back").addEventListener("click", () => { editing = null; draw(view); });
+  view.querySelector("#v-back").addEventListener("click", () => { editing = null; showing = null; draw(view); });
 
   view.querySelector("#q-add").addEventListener("click", () => {
     readQuestions(view);
@@ -393,7 +400,7 @@ async function loadSignups(view, v) {
                   data-name="${esc(r.name || "")}">Remove</button></div>
         <div class="small muted" style="margin-top:4px">
           ${esc(r.email || "")}${r.role ? " · " + esc(r.role) : ""} ·
-          ${esc(String(r.guests ?? 1))} booked${r.confirmationSent === false
+          ${esc(String(r.guests ?? 1))} booked${r.addedByHand ? " · added by hand" : ""}${r.confirmationSent === false
             ? ` · <b style="color:var(--vox-bad)">confirmation did not send — they have not got the address</b>`
             : ""}</div>
         ${qs.map((q, i) => {
@@ -512,4 +519,177 @@ function downloadCsv(v) {
   a.download = `${name}-signups.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+
+/* ---- adding somebody who replied by email ------------------------------
+   The public form cannot produce this row: it has a status, a reason and a
+   flag saying do not email this person, none of which the security rules let
+   a stranger send. Admin gets its own create for exactly this.             */
+
+function wireAddByHand(view, v) {
+  const form = view.querySelector("#s-addform");
+  const tick = view.querySelector("#a-email-them");
+  const att  = view.querySelector("#a-att");
+  const why  = view.querySelector("#a-email-why");
+  if (!form) return;
+
+  // Somebody who has just said they cannot come must not be sent the address.
+  // The box is cleared and disabled rather than merely ignored, so the screen
+  // and the behaviour say the same thing.
+  const syncTick = () => {
+    const out = att.value === "declined";
+    tick.disabled = out;
+    if (out) tick.checked = false;
+    why.textContent = out
+      ? "Somebody who cannot come is not sent the address."
+      : "Leave this unticked if you have already replied to them yourself.";
+  };
+  att.addEventListener("change", syncTick);
+  syncTick();
+
+  view.querySelector("#s-add").addEventListener("click", () => {
+    form.hidden = !form.hidden;
+    if (!form.hidden) view.querySelector("#a-name").focus();
+  });
+  view.querySelector("#a-cancel").addEventListener("click", () => { form.hidden = true; });
+
+  view.querySelector("#a-save").addEventListener("click", async () => {
+    const btn = view.querySelector("#a-save");
+    const val = (id) => (view.querySelector(id)?.value || "").trim();
+    const name = val("#a-name"), email = val("#a-email");
+
+    if (!name) { toast("They need a name."); view.querySelector("#a-name").focus(); return; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      toast("That email address does not look right."); return;
+    }
+    if (tick.checked && !email) { toast("No email address to send it to."); return; }
+
+    let guests = parseInt(val("#a-guests"), 10);
+    if (!Number.isFinite(guests)) guests = 1;
+    guests = Math.max(0, Math.min(20, guests));
+
+    // Read before the form is cleared below, or the message always reads
+    // "Added." and never tells him an email actually went out.
+    const emailed = tick.checked;
+
+    btn.disabled = true; btn.textContent = "Adding\u2026";
+    try {
+      await addDoc(collection(db, "viewing_signups"), {
+        viewingId: v.id,
+        name, email, org: val("#a-org"), role: "",
+        guests, answers: {},
+        attendance: att.value === "declined" ? "declined" : "coming",
+        attendanceNote: val("#a-note"),
+        addedByHand: true,
+        suppressEmail: !tick.checked,
+        createdAt: serverTimestamp()
+      });
+      ["#a-name", "#a-email", "#a-org", "#a-note"].forEach(id => { view.querySelector(id).value = ""; });
+      view.querySelector("#a-guests").value = "1";
+      tick.checked = false;
+      form.hidden = true;
+      toast(emailed ? "Added, and the joining details are on their way." : "Added.");
+      loadSignups(view, v);
+    } catch (err) {
+      console.error(err);
+      toast("Could not add them.");
+    }
+    btn.disabled = false; btn.textContent = "Add them";
+  });
+}
+
+
+/* ---- who is coming, without opening the invitation ---------------------
+   The attendee list used to live inside the editor, which meant reading a
+   headcount put you in a screen full of live fields with a Save button. Its
+   own page now. Same panel, no invitation to edit by accident.            */
+
+function drawAttendees(view, v) {
+  if (!v) { showing = null; return draw(view); }
+
+  view.innerHTML = `
+    <div class="card">
+      <div class="item-h"><span class="ttl">${esc(v.title || "Viewing")}</span>
+        <button class="btn btn-sm btn-ghost" id="w-back" style="margin-left:auto">Back</button></div>
+      <p class="small muted" style="margin:6px 0 0">
+        ${esc([v.dateText, v.timeText, v.publicLocation].filter(Boolean).join(" · "))}</p>
+    </div>
+    ${signupsPanel()}`;
+
+  view.querySelector("#w-back").addEventListener("click", () => { showing = null; draw(view); });
+  wireSignups(view, v);
+}
+
+// One definition of the panel, used by this page and by the editor, so the
+// two can never drift into showing different things.
+function signupsPanel() {
+  return `
+    <div class="card">
+      <div class="item-h"><span class="ttl" style="font-size:19px">Who has signed up</span>
+        <button class="btn btn-sm btn-ghost" id="s-add" style="margin-left:auto">Add by hand</button>
+        <button class="btn btn-sm btn-ghost" id="s-refresh">Refresh</button>
+        <button class="btn btn-sm btn-ghost" id="s-csv">Download</button></div>
+      <div id="s-addform" hidden style="margin-top:16px;padding:18px;border:var(--vox-border)">
+        <p class="small muted" style="margin:0 0 14px">
+          For somebody who replied to the invitation by email and never used the form.</p>
+        <div class="grid g3">
+          <label class="field"><span>Name</span><input id="a-name" maxlength="120"></label>
+          <label class="field"><span>Email</span><input id="a-email" maxlength="254"
+            placeholder="Optional"></label>
+          <label class="field"><span>Organisation</span><input id="a-org" maxlength="160"></label>
+        </div>
+        <div class="grid g3">
+          <label class="field"><span>How many</span>
+            <input id="a-guests" type="number" min="0" max="20" step="1" value="1"></label>
+          <label class="field"><span>Status</span>
+            <select id="a-att">
+              <option value="coming">Coming</option>
+              <option value="declined">Can't make it</option>
+            </select></label>
+          <label class="field"><span>Reason or note</span>
+            <input id="a-note" maxlength="300"></label>
+        </div>
+        <label style="display:flex;gap:9px;align-items:center;font-size:14px;margin:4px 0 14px">
+          <input type="checkbox" id="a-email-them" style="width:auto">
+          Also email them the joining details, with the address</label>
+        <p class="small muted" id="a-email-why" style="margin:-8px 0 14px">
+          Leave this unticked if you have already replied to them yourself.</p>
+        <div style="display:flex;gap:9px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="a-save">Add them</button>
+          <button class="btn btn-sm btn-ghost" id="a-cancel">Cancel</button>
+        </div>
+      </div>
+      <div id="s-list" style="margin-top:14px"><p class="muted small">Loading...</p></div>
+    </div>`;
+}
+
+function wireSignups(view, v) {
+  loadSignups(view, v);
+  view.querySelector("#s-refresh").addEventListener("click", () => loadSignups(view, v));
+  view.querySelector("#s-csv").addEventListener("click", () => downloadCsv(v));
+  wireAddByHand(view, v);
+}
+
+// A quiet count for the card on the list page. It fails silently on purpose:
+// a headcount that could not load must not replace the viewing's card with an
+// error, and the real list is one click away.
+async function countInto(view, v) {
+  const el = view.querySelector(`[data-count="${v.id}"]`);
+  if (!el) return;
+  try {
+    const snap = await getDocs(query(collection(db, "viewing_signups"),
+                                     where("viewingId", "==", v.id)));
+    const rows = snap.docs.map(d => d.data());
+    const inn = rows.filter(r => !isDeclined(r));
+    const heads = inn.reduce((n, r) => n + (Number(r.guests) || 1), 0);
+    const out = rows.length - inn.length;
+    el.innerHTML = rows.length
+      ? `<b>${heads}</b> ${heads === 1 ? "person" : "people"} coming,
+         from <b>${inn.length}</b> sign-up${inn.length === 1 ? "" : "s"}${
+           out ? ` · <span class="muted">${out} dropped out</span>` : ""}`
+      : `<span class="muted">No sign-ups yet</span>`;
+  } catch {
+    el.innerHTML = `<span class="muted">Headcount unavailable</span>`;
+  }
 }

@@ -370,7 +370,19 @@ service cloud.firestore {
     // any back. The same carve-out shape as requirement_responses above, with
     // validSignup() doing the work.
     match /viewing_signups/{id} {
-      allow create: if validSignup();
+      // Two ways in, and they are not the same thing.
+      //
+      // validSignup() is the stranger's door: the public form, pinned to a
+      // shape, and refused the moment the viewing is closed.
+      //
+      // isAdmin() is Martin writing a row by hand, for somebody who replied
+      // to the invitation by email and never touched the form. That row needs
+      // fields the public shape does not allow — a status, a reason, and a
+      // flag saying do not email this person — and it has to be possible
+      // after sign-ups have closed, which is exactly when the last few
+      // replies arrive. He can already update and delete every row here, so
+      // letting him create one grants nothing he did not have.
+      allow create: if validSignup() || isAdmin();
       allow read, update, delete: if isAdmin();
     }
 

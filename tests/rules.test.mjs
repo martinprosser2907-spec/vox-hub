@@ -760,6 +760,61 @@ describe("viewings — the one open door in the hub", () => {
     await assertFails(deleteDoc(doc(steering(), "viewing_signups/s1")));
   });
 
+  test("Martin can add somebody who replied by email, in a shape the form could not send", async () => {
+    await openViewing();
+    await assertSucceeds(setDoc(doc(admin(), "viewing_signups/s1"), {
+      viewingId: "v1", name: "Cheryl Richardson", email: "cheryl@plan-uk.example",
+      org: "Plan UK", guests: 1,
+      attendance: "declined", attendanceNote: "All-day Leadership Team meeting",
+      addedByHand: true, suppressEmail: true,
+      createdAt: serverTimestamp()
+    }));
+  });
+
+  test("he can still add one after sign-ups have closed, which is when the last replies arrive", async () => {
+    await openViewing("v1", { open: false });
+    await assertSucceeds(setDoc(doc(admin(), "viewing_signups/s1"), {
+      viewingId: "v1", name: "Late Reply", email: "late@example.com",
+      attendance: "coming", addedByHand: true, createdAt: serverTimestamp()
+    }));
+    // and the public door is still shut
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s2"), signup()));
+  });
+
+  test("the extra fields are Martin's alone — a stranger still cannot send them", async () => {
+    await openViewing();
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s1"),
+      signup({ attendance: "coming" })));
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s2"),
+      signup({ suppressEmail: true })));
+    await assertFails(setDoc(doc(stranger(), "viewing_signups/s3"),
+      signup({ addedByHand: true })));
+  });
+
+  test("a charity on the steering group still cannot add or change one", async () => {
+    await openViewing();
+    await assertFails(setDoc(doc(steering(), "viewing_signups/s1"), {
+      viewingId: "v1", name: "Someone", email: "x@example.com",
+      addedByHand: true, createdAt: serverTimestamp()
+    }));
+    await assertFails(setDoc(doc(general(), "viewing_signups/s2"), {
+      viewingId: "v1", name: "Someone", email: "x@example.com",
+      addedByHand: true, createdAt: serverTimestamp()
+    }));
+  });
+
+  test("marking somebody as not coming is admin only", async () => {
+    await openViewing();
+    await seed(db => setDoc(doc(db, "viewing_signups/s1"),
+      { viewingId: "v1", name: "Dan", email: "d@x.example" }));
+    await assertFails(updateDoc(doc(stranger(), "viewing_signups/s1"),
+      { attendance: "declined" }));
+    await assertFails(updateDoc(doc(steering(), "viewing_signups/s1"),
+      { attendance: "declined" }));
+    await assertSucceeds(updateDoc(doc(admin(), "viewing_signups/s1"),
+      { attendance: "declined", attendanceNote: "Clash" }));
+  });
+
   test("the whole list of who is coming is admin only", async () => {
     await openViewing();
     await seed(db => setDoc(doc(db, "viewing_signups/s1"),

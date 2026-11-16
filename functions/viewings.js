@@ -63,6 +63,19 @@ export const onViewingSignup = onDocumentCreated(
     const s = event.data?.data();
     if (!ref || !s) return;
 
+    // A row Martin typed in himself, for somebody who replied to the
+    // invitation by email. He has already answered them. A confirmation from
+    // here would be a second, colder copy — and where the reply was "I can't
+    // make it", it would be an invitation they have just turned down landing
+    // in their inbox with the address on it.
+    //
+    // The flag is set deliberately, per row, with the box on the add form.
+    // Leaving it off sends the emails exactly as a form sign-up would.
+    if (s.suppressEmail === true) {
+      console.info("viewing sign-up added by hand, no email sent:", s.email || s.name);
+      return;
+    }
+
     const vSnap = await db.doc(`viewings/${s.viewingId}`).get();
     const v = vSnap.exists ? vSnap.data() : {};
     const pSnap = await db.doc(`viewings/${s.viewingId}/private/details`).get();
