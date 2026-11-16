@@ -20,8 +20,8 @@
 // field in the public document is an address published to everyone the link
 // is forwarded to.
 // ---------------------------------------------------------------------------
-import { db, doc, getDoc, setDoc, addDoc, deleteDoc, collection, query, where,
-         getDocs, orderBy, onSnapshot, serverTimestamp } from "../fb.js";
+import { db, doc, getDoc, setDoc, addDoc, deleteDoc, updateDoc, collection,
+         query, where, getDocs, orderBy, onSnapshot, serverTimestamp } from "../fb.js";
 import { esc, toast, when } from "../ui.js";
 
 const PUBLIC_BASE = location.origin + "/viewing.html?v=";
@@ -351,6 +351,12 @@ function drawQuestions(view) {
 
 let lastRows = [];
 
+// A sign-up with no attendance field is somebody who filled the form and has
+// said nothing since — which is "coming". Only an explicit "declined" counts
+// as out, so a field that was never set can never quietly drop a person from
+// the headcount.
+const isDeclined = (r) => r.attendance === "declined";
+
 async function loadSignups(view, v) {
   const box = view.querySelector("#s-list");
   if (!box) return;
@@ -369,13 +375,17 @@ async function loadSignups(view, v) {
     }
 
     const qs = v.questions || [];
-    const people = rows.reduce((n, r) => n + (Number(r.guests) || 1), 0);
+
+    const out = rows.filter(isDeclined);
+    const inn = rows.filter(r => !isDeclined(r));
+    const heads = inn.reduce((n, r) => n + (Number(r.guests) || 1), 0);
 
     box.innerHTML = `
       <p class="small muted" style="margin:0 0 12px">
-        <b>${rows.length}</b> sign-up${rows.length === 1 ? "" : "s"},
-        <b>${people}</b> ${people === 1 ? "person" : "people"} expected.</p>
-      <ul class="list">${rows.map(r => `<li>
+        <b>${heads}</b> ${heads === 1 ? "person" : "people"} coming,
+        from <b>${inn.length}</b> sign-up${inn.length === 1 ? "" : "s"}${
+          out.length ? ` · <b>${out.length}</b> since dropped out` : ""}.</p>
+      <ul class="list">${rows.map(r => `<li${isDeclined(r) ? ' style="opacity:.62"' : ""}>
         <div class="item-h"><span class="ttl">${esc(r.name || "")}</span>
           ${r.org ? `<span class="tag">${esc(r.org)}</span>` : ""}
           <time style="margin-left:auto">${when(r.createdAt)}</time>
@@ -383,7 +393,7 @@ async function loadSignups(view, v) {
                   data-name="${esc(r.name || "")}">Remove</button></div>
         <div class="small muted" style="margin-top:4px">
           ${esc(r.email || "")}${r.role ? " · " + esc(r.role) : ""} ·
-          ${esc(String(r.guests ?? 1))} coming${r.confirmationSent === false
+          ${esc(String(r.guests ?? 1))} booked${r.confirmationSent === false
             ? ` · <b style="color:var(--vox-bad)">confirmation did not send — they have not got the address</b>`
             : ""}</div>
         ${qs.map((q, i) => {
@@ -391,7 +401,58 @@ async function loadSignups(view, v) {
           return a ? `<div class="small" style="margin-top:5px">
             <span class="muted">${esc(q.label || "")}:</span> ${esc(a)}</div>` : "";
         }).join("")}
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px">
+          <button class="btn btn-sm s-att ${isDeclined(r) ? "btn-ghost" : ""}"
+                  data-id="${esc(r.id)}" data-set="coming">Coming</button>
+          <button class="btn btn-sm s-att ${isDeclined(r) ? "" : "btn-ghost"}"
+                  data-id="${esc(r.id)}" data-set="declined">Can't make it</button>
+          <input class="s-note" data-id="${esc(r.id)}" style="flex:1;min-width:200px"
+                 maxlength="300" placeholder="Reason or note — saves when you click away"
+                 value="${esc(r.attendanceNote || "")}">
+        </div>
       </li>`).join("")}</ul>`;
+
+    // One click sets it, and it writes straight away. Nothing to save and no
+    // form to submit: three days before a viewing, a status that needed a
+    // second step would be a status nobody updated.
+    box.querySelectorAll(".s-att").forEach(b => b.addEventListener("click", async () => {
+      const declined = b.dataset.set === "declined";
+      b.disabled = true;
+      try {
+        await updateDoc(doc(db, "viewing_signups", b.dataset.id), {
+          attendance: declined ? "declined" : "coming",
+          attendanceAt: serverTimestamp()
+        });
+        if (declined) {
+          const note = box.querySelector(`.s-note[data-id="${b.dataset.id}"]`);
+          if (note && !note.value) note.focus();
+        }
+        loadSignups(view, v);
+      } catch (err) {
+        console.error(err);
+        toast("Could not change that.");
+        b.disabled = false;
+      }
+    }));
+
+    // Saved on blur rather than per keystroke. The list is NOT redrawn after,
+    // because redrawing while somebody is tabbing between notes throws away
+    // the one they are halfway through.
+    box.querySelectorAll(".s-note").forEach(inp => {
+      const was = inp.value;
+      inp.addEventListener("blur", async () => {
+        if (inp.value === was) return;
+        try {
+          await updateDoc(doc(db, "viewing_signups", inp.dataset.id), {
+            attendanceNote: inp.value.trim(),
+            attendanceAt: serverTimestamp()
+          });
+          const row = lastRows.find(r => r.id === inp.dataset.id);
+          if (row) row.attendanceNote = inp.value.trim();
+          toast("Saved.");
+        } catch (err) { console.error(err); toast("Could not save that note."); }
+      });
+    });
 
     // Removing a sign-up is not undoable and the person is not told, so it
     // asks first and names who it is about to drop. Test entries are the
@@ -429,9 +490,15 @@ function csvCell(value) {
 function downloadCsv(v) {
   if (!lastRows.length) { toast("Nothing to download yet."); return; }
   const qs = v.questions || [];
-  const head = ["Name", "Email", "Organisation", "Job title", "Coming",
-                ...qs.map(q => q.label || ""), "Signed up", "Confirmation sent"];
-  const body = lastRows.map(r => [
+  const head = ["Status", "Reason / note", "Name", "Email", "Organisation",
+                "Job title", "How many", ...qs.map(q => q.label || ""),
+                "Signed up", "Confirmation sent"];
+  // Decliners sort to the bottom, so the top of the sheet is the list you
+  // actually read out at the door.
+  const ordered = [...lastRows].sort((a, b) => Number(isDeclined(a)) - Number(isDeclined(b)));
+  const body = ordered.map(r => [
+    isDeclined(r) ? "Cannot make it" : "Coming",
+    r.attendanceNote || "",
     r.name, r.email, r.org, r.role, r.guests ?? 1,
     ...qs.map((q, i) => (r.answers || {})[q.key || ("q" + (i + 1))] || ""),
     when(r.createdAt), r.confirmationSent === false ? "NO" : "yes"
