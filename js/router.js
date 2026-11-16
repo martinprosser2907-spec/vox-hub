@@ -3,6 +3,36 @@
 import { $ } from "./ui.js";
 import { esc, toast } from "./ui.js";
 
+// ---------------------------------------------------------------------------
+// WHY THE VIEW MODULES CARRY A ?v= ON THE END
+//
+// A view is loaded with a dynamic import(). GitHub Pages serves everything
+// under /js/ with Cache-Control: max-age=600, and a dynamic import happens
+// long after the page has loaded, so it is served out of the browser's HTTP
+// cache — including after Ctrl+Shift+R, which only forces a refetch of the
+// document and the scripts in its <head>.
+//
+// The result was a hub that knew perfectly well it was out of date and could
+// do nothing about it. app.js fetches version.json with no-store, sees a new
+// stamp, reloads the page — and the reload imports exactly the same cached
+// view files. On 16 Nov 2026 a page deployed twenty-five minutes earlier was
+// still showing the previous build after repeated hard reloads, while
+// version.json in the same tab reported the new one.
+//
+// Putting the build stamp in the URL makes a deploy a different URL, which
+// the browser has no choice but to fetch. It costs one no-store request for
+// version.json, which app.js was making anyway.
+//
+// If the stamp cannot be read, the import goes out unversioned rather than
+// not at all: a hub that might be a few minutes stale beats a hub that will
+// not open a page.
+// ---------------------------------------------------------------------------
+let stamp = "";
+const stampReady = fetch("/version.json", { cache: "no-store" })
+  .then(r => r.json())
+  .then(v => { stamp = String(v.stamp || "").split(" ").pop() || ""; })
+  .catch(() => {});
+
 // Names for the handful of pages somebody can arrive at without having access
 // to them. Only the taskbar shortcuts make that possible — the menu never
 // shows a page you cannot open — so before they existed this never happened
@@ -58,7 +88,8 @@ async function go() {
       // the "not built yet" placeholder rather than throwing a module error at
       // somebody who only clicked a menu item.
       try {
-        mod = await import(`./views/${name}.js`);
+        await stampReady;
+        mod = await import(`./views/${name}.js${stamp ? `?v=${encodeURIComponent(stamp)}` : ""}`);
         cache.set(name, mod);
       } catch (missing) {
         // Deliberately NOT cached. A view can be missing for two very
