@@ -46,7 +46,8 @@ const STAGES = [
   "Active Dialogue",
   "Expected to sign",
   "Onboarded",
-  "Lost"
+  "Lost",
+  "Do Not Pursue"   // added 16 Nov 2026: prospects removed at the review; counted, never named
 ];
 
 // Stages whose organisations may be NAMED to the Steering Group.

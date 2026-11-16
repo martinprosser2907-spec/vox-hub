@@ -22,7 +22,8 @@ const STAGE_NOTE = {
   "Active Dialogue":  "In conversation",
   "Expected to sign": "Expected to sign",
   "Onboarded":        "Onboarded",
-  "Lost":             "Not proceeding"
+  "Lost":             "Not proceeding",
+  "Do Not Pursue":    "Removed at prospect review"
 };
 
 export function render(view, ctx) {
